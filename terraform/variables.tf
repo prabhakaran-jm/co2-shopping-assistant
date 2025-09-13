@@ -70,6 +70,12 @@ variable "enable_managed_cni" {
   default     = true
 }
 
+variable "enable_network_policy" {
+  description = "Enable network policy enforcement"
+  type        = bool
+  default     = false
+}
+
 # Environment Configuration
 variable "environment" {
   description = "Environment name (dev, staging, prod)"
