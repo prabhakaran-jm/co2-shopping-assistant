@@ -57,6 +57,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown."""
     # Startup
     logger.info("Starting CO2-Aware Shopping Assistant")
+    print("LIFESPAN: Starting CO2-Aware Shopping Assistant")
     
     try:
         # Initialize MCP Servers
@@ -67,18 +68,30 @@ async def lifespan(app: FastAPI):
         await mcp_servers["boutique"].start()
         await mcp_servers["co2"].start()
         
-        # Initialize Agents
-        logger.info("Initializing AI agents...")
-        agents["product_discovery"] = ProductDiscoveryAgent()
-        agents["co2_calculator"] = CO2CalculatorAgent()
-        agents["cart_management"] = CartManagementAgent()
-        agents["checkout"] = CheckoutAgent()
-        agents["host"] = HostAgent(sub_agents=list(agents.values()))
-        
-        # Initialize A2A Protocol
+        # Initialize A2A Protocol first
         logger.info("Initializing A2A protocol...")
         a2a_protocol = A2AProtocol()
         await a2a_protocol.initialize()
+        
+        # Initialize Agents
+        logger.info("Initializing AI agents...")
+        agents["ProductDiscoveryAgent"] = ProductDiscoveryAgent()
+        agents["CO2CalculatorAgent"] = CO2CalculatorAgent()
+        agents["CartManagementAgent"] = CartManagementAgent()
+        agents["CheckoutAgent"] = CheckoutAgent()
+        agents["host"] = HostAgent(sub_agents=list(agents.values()))
+        
+        # Register all agents with A2A protocol
+        logger.info("Registering agents with A2A protocol...")
+        print("LIFESPAN: Registering agents with A2A protocol...")
+        for agent_name, agent_instance in agents.items():
+            if agent_name != "host":  # Don't register the host agent itself
+                await a2a_protocol.register_agent(agent_name, agent_instance)
+                logger.info(f"Registered agent: {agent_name}")
+                print(f"LIFESPAN: Registered agent: {agent_name}")
+        
+        # Update host agent with A2A protocol reference
+        agents["host"].a2a_protocol = a2a_protocol
         
         logger.info("CO2-Aware Shopping Assistant started successfully")
         
