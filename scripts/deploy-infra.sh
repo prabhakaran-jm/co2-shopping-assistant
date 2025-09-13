@@ -256,7 +256,18 @@ if [ -d "online-boutique/helm-chart" ]; then
     helm upgrade --install online-boutique online-boutique/helm-chart \
         --namespace online-boutique \
         --create-namespace \
-        --wait --timeout=300s
+        --set frontend.replicaCount=1 \
+        --set adservice.replicaCount=1 \
+        --set cartservice.replicaCount=1 \
+        --set checkoutservice.replicaCount=1 \
+        --set currencyservice.replicaCount=1 \
+        --set emailservice.replicaCount=1 \
+        --set loadgenerator.replicaCount=1 \
+        --set paymentservice.replicaCount=1 \
+        --set productcatalogservice.replicaCount=1 \
+        --set recommendationservice.replicaCount=1 \
+        --set shippingservice.replicaCount=1 \
+        --wait --timeout=900s
     print_success "Online Boutique deployed via Helm"
 else
     # Fallback to kubectl manifests
