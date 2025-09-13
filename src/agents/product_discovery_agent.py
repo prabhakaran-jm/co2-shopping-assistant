@@ -126,23 +126,46 @@ Always explain why certain products are more environmentally friendly and help u
     async def _parse_request_type(self, message: str) -> str:
         """Parse the type of product discovery request."""
         message_lower = message.lower()
-        
-        if any(word in message_lower for word in ["find", "search", "look for", "show me"]):
+        words = message_lower.split()
+
+        search_keywords = ["find", "search", "look for", "show me"]
+        recommend_keywords = ["recommend", "suggest", "best", "top"]
+        compare_keywords = ["compare", "vs", "versus", "difference"]
+        details_keywords = ["details", "info", "about", "specifications"]
+
+        if any(keyword in message_lower for keyword in search_keywords):
             return "search"
-        elif any(word in message_lower for word in ["recommend", "suggest", "best", "top"]):
+        
+        if message_lower.startswith("show ") and len(words) > 1:
+            return "search"
+
+        if any(keyword in message_lower for keyword in recommend_keywords):
             return "recommend"
-        elif any(word in message_lower for word in ["compare", "vs", "versus", "difference"]):
+
+        if any(keyword in message_lower for keyword in compare_keywords):
             return "compare"
-        elif any(word in message_lower for word in ["details", "info", "about", "specifications"]):
+
+        if any(keyword in message_lower for keyword in details_keywords):
             return "details"
-        else:
-            return "general"
+
+        if len(words) == 1:
+            if words[0] == "show":
+                return "general"
+            return "search"
+
+        return "general"
     
     async def _handle_product_search(self, message: str, session_id: str) -> str:
         """Handle product search requests."""
         try:
+            print(f"ProductDiscoveryAgent: _handle_product_search called with message: '{message}'")
+            logger.info("ProductDiscoveryAgent: Handling product search", message=message)
+            
             # Extract search parameters
+            print(f"ProductDiscoveryAgent: Extracting search parameters...")
             search_params = await self._extract_search_parameters(message)
+            print(f"ProductDiscoveryAgent: Extracted search parameters: {search_params}")
+            logger.info("ProductDiscoveryAgent: Extracted search parameters", search_params=search_params)
             
             # Search products using boutique MCP
             products = await self._search_products(search_params)
@@ -159,6 +182,7 @@ Always explain why certain products are more environmentally friendly and help u
             return response
             
         except Exception as e:
+            print(f"ProductDiscoveryAgent: Exception in _handle_product_search: {str(e)}")
             logger.error("Product search failed", error=str(e))
             return "I encountered an error while searching for products. Please try again."
     
@@ -205,25 +229,36 @@ Always explain why certain products are more environmentally friendly and help u
             return "I encountered an error while comparing products. Please try again."
     
     async def _handle_product_details(self, message: str, session_id: str) -> str:
-        """Handle product details requests."""
+        """Handle product details requests with improved context awareness."""
         try:
             # Extract product identifier
             product_id = await self._extract_product_identifier(message)
             
             if not product_id:
-                return "I need a product ID or name to get details. Could you specify which product you'd like to know more about?"
+                return "I need a product name to get details. Could you specify which product you'd like to know more about? For example: 'Tell me about sunglasses' or 'Show me details for loafers'."
             
-            # Get product details
-            product_details = await self._get_product_details(product_id)
+            # Search for products matching the identifier
+            search_params = {"query": product_id, "limit": 5}
+            products = await self._search_products(search_params)
             
-            if not product_details:
-                return f"I couldn't find details for product '{product_id}'. Please check the product name or ID."
+            if not products:
+                return f"I couldn't find any products matching '{product_id}'. Please check the product name or try a different search term."
+            
+            # Find the best matching product
+            best_match = None
+            for product in products:
+                if product_id.lower() in product.get("name", "").lower():
+                    best_match = product
+                    break
+            
+            if not best_match:
+                best_match = products[0]  # Use first result if no exact match
             
             # Get CO2 impact
             co2_data = await self._get_product_co2_impact(product_id)
             
             # Format detailed response
-            response = self._format_product_details_response(product_details, co2_data)
+            response = self._format_product_details_response(best_match, co2_data)
             
             return response
             
@@ -319,16 +354,38 @@ What would you like to explore? I'll make sure to highlight the environmental be
         return params
     
     async def _extract_product_identifier(self, message: str) -> Optional[str]:
-        """Extract product identifier from message."""
-        # Simplified extraction - in real implementation would use NLP
+        """Extract product identifier from message with improved natural language processing."""
         import re
+        
+        message_lower = message.lower().strip()
         
         # Look for product IDs (alphanumeric patterns)
         id_match = re.search(r'[A-Z0-9]{6,}', message)
         if id_match:
             return id_match.group(0)
         
-        # Look for product names
+        # Common product names from Online Boutique
+        product_names = [
+            "sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes",
+            "electronics", "clothing", "accessories", "home", "sports",
+            "laptop", "phone", "book", "shirt", "jacket", "dress", "pants"
+        ]
+        
+        # Check for exact product name matches
+        for product in product_names:
+            if product in message_lower:
+                return product
+        
+        # Look for product names in context (e.g., "about loafers", "yes about sunglasses")
+        if "about" in message_lower:
+            words = message_lower.split()
+            for i, word in enumerate(words):
+                if word == "about" and i + 1 < len(words):
+                    next_word = words[i + 1]
+                    if next_word in product_names:
+                        return next_word
+        
+        # Look for general product words
         words = message.lower().split()
         product_words = [word for word in words if len(word) > 3 and word.isalpha()]
         
@@ -340,10 +397,16 @@ What would you like to explore? I'll make sure to highlight the environmental be
     async def _search_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Search products using boutique MCP."""
         try:
+            print(f"ProductDiscoveryAgent: _search_products called with params: {search_params}")
+            logger.info("ProductDiscoveryAgent: Starting product search", search_params=search_params)
+            
             if not self.boutique_mcp_server:
+                print(f"ProductDiscoveryAgent: Boutique MCP server not available, using fallback data")
                 logger.warning("Boutique MCP server not available, using fallback data")
                 return await self._get_fallback_products(search_params)
             
+            print(f"ProductDiscoveryAgent: Calling boutique MCP server")
+            logger.info("ProductDiscoveryAgent: Calling boutique MCP server")
             # Call the boutique MCP server to search products
             products = await self.boutique_mcp_server.search_products(
                 query=search_params.get("query", ""),
@@ -357,6 +420,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
             return products
             
         except Exception as e:
+            print(f"ProductDiscoveryAgent: Exception in _search_products: {str(e)}")
             logger.error("Failed to search products via MCP, using fallback", error=str(e))
             return await self._get_fallback_products(search_params)
     
@@ -523,9 +587,18 @@ What would you like to explore? I'll make sure to highlight the environmental be
     
     def _format_product_details_response(self, product: Dict[str, Any], co2_data: Dict[str, Any]) -> str:
         """Format detailed product information."""
+        # Extract price from gRPC response structure
+        price_usd = product.get("price_usd", {})
+        price_units = price_usd.get("units", 0) + (price_usd.get("nanos", 0) / 1e9)
+        
         response = f"📋 **Product Details: {product['name']}**\n\n"
-        response += f"💰 **Price**: ${product['price']}\n"
-        response += f"📦 **Category**: {product['category'].title()}\n"
+        response += f"💰 **Price**: ${price_units:.2f}\n"
+        
+        # Handle categories (list from gRPC response)
+        categories = product.get("categories", [])
+        if categories:
+            response += f"📦 **Categories**: {', '.join(categories)}\n"
+        
         response += f"📝 **Description**: {product['description']}\n\n"
         
         response += "🌱 **Environmental Impact**:\n"
@@ -535,8 +608,8 @@ What would you like to explore? I'll make sure to highlight the environmental be
         response += f"• Disposal: {co2_data['disposal_co2']}kg CO2\n"
         response += f"• **Total**: {co2_data['total_co2']}kg CO2 ({co2_data['eco_rating']} impact)\n\n"
         
-        response += f"⭐ **Eco Score**: {product['eco_score']}/10\n"
-        response += f"✅ **Availability**: {'In Stock' if product['availability'] else 'Out of Stock'}\n\n"
+        response += f"⭐ **Eco Score**: {product.get('eco_score', 'N/A')}/10\n"
+        response += f"🆔 **Product ID**: {product.get('id', 'N/A')}\n\n"
         
         response += "💡 This product is selected for its environmental consciousness and sustainable features!"
         

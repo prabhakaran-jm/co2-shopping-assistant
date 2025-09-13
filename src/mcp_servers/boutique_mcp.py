@@ -122,12 +122,16 @@ class BoutiqueMCPServer:
             List of products matching the search criteria
         """
         try:
+            print(f"BoutiqueMCP: Starting search_products with query: '{query}'")
             logger.info(f"Fetching products from {self.endpoints['product_catalog']} via gRPC")
             
             # gRPC call to ProductCatalogService
+            print(f"BoutiqueMCP: Creating gRPC channel to {self.endpoints['product_catalog']}")
             async with aio.insecure_channel(self.endpoints['product_catalog']) as ch:
                 stub = pb2_grpc.ProductCatalogServiceStub(ch)
                 resp = await stub.ListProducts(pb2.Empty())
+                
+                logger.info(f"Received {len(resp.products)} products from gRPC")
                 
                 # Convert gRPC response to our format
                 products = []
@@ -136,6 +140,34 @@ class BoutiqueMCPServer:
                     price_units = p.price_usd.units + (p.price_usd.nanos / 1e9)
                     
                     # Apply filters
+                    if query and query.strip():
+                        query_lower = query.lower().strip()
+                        # Skip filtering for "show all" or "all products" queries
+                        if not any(phrase in query_lower for phrase in ["show all", "all products", "show me all", "list all"]):
+                            # For specific product searches, filter out stop words and check if all remaining words match
+                            stop_words = {"show", "find", "search", "me", "for", "a", "the", "is", "are", "of"}
+                            all_query_words = [word for word in query_lower.split() if word]
+                            query_words = [word for word in all_query_words if word not in stop_words]
+
+                            if query_words:
+                                product_name_lower = p.name.lower()
+                                # Normalize product name to handle compound words and variations
+                                product_name_condensed = product_name_lower.replace(' ', '').replace('-', '')
+                                
+                                all_words_found = True
+                                for word in query_words:
+                                    # Normalize each query word by removing hyphens
+                                    normalized_word = word.replace('-', '')
+                                    
+                                    # Check for the query word in both the original and condensed product names
+                                    if normalized_word not in product_name_lower and \
+                                       normalized_word not in product_name_condensed:
+                                        all_words_found = False
+                                        break
+                                
+                                if not all_words_found:
+                                    continue
+                    
                     if category:
                         cats = [c.lower() for c in p.categories]
                         if category.lower() not in cats:
@@ -171,6 +203,7 @@ class BoutiqueMCPServer:
                 return products
             
         except Exception as e:
+            print(f"BoutiqueMCP: Exception in search_products: {str(e)}")
             logger.error("Product search failed", query=query, error=str(e))
             return []
     

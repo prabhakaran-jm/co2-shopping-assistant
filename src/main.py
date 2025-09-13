@@ -176,10 +176,13 @@ async def chat_endpoint(request: Dict[str, Any]):
             raise HTTPException(status_code=400, detail="Message is required")
         
         logger.info("Processing user message", message=user_message, session_id=session_id)
+        print(f"MAIN: Processing user message: {user_message}")
         
         # Route to host agent for processing
         host_agent = agents["host"]
+        print(f"MAIN: Calling host agent process_message")
         response = await host_agent.process_message(user_message, session_id)
+        print(f"MAIN: Received response from host agent: {type(response)}")
         
         return {
             "response": response,
