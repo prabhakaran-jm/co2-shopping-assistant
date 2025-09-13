@@ -143,7 +143,7 @@ class BoutiqueMCPServer:
                     if query and query.strip():
                         query_lower = query.lower().strip()
                         # Skip filtering for "show all" or "all products" queries
-                        if not any(phrase in query_lower for phrase in ["show all", "all products", "show me all", "list all"]):
+                        if not any(phrase in query_lower for phrase in ["show all", "all products", "show me all", "list all", "show products", "products"]):
                             # For specific product searches, filter out stop words and check if all remaining words match
                             stop_words = {"show", "find", "search", "me", "for", "a", "the", "is", "are", "of"}
                             all_query_words = [word for word in query_lower.split() if word]

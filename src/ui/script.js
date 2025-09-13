@@ -21,7 +21,7 @@ class CO2ShoppingAssistant {
     
     addWelcomeMessage() {
         const welcomeMessage = `
-            Welcome to the CO2-Aware Shopping Assistant! ���<br><br>
+            Welcome to the CO2-Aware Shopping Assistant! 🌱<br><br>
             I can help you:<br>
             • Find products with lower carbon footprint<br>
             • Suggest sustainable alternatives<br>

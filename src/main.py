@@ -14,7 +14,8 @@ from typing import Dict, Any
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import structlog
 
 from .agents.host_agent import HostAgent
@@ -75,7 +76,9 @@ async def lifespan(app: FastAPI):
         
         # Initialize Agents
         logger.info("Initializing AI agents...")
-        agents["ProductDiscoveryAgent"] = ProductDiscoveryAgent(boutique_mcp_server=mcp_servers["boutique"])
+        agents["ProductDiscoveryAgent"] = ProductDiscoveryAgent(
+            boutique_mcp_server=mcp_servers["boutique"]
+        )
         agents["CO2CalculatorAgent"] = CO2CalculatorAgent()
         agents["CartManagementAgent"] = CartManagementAgent()
         agents["CheckoutAgent"] = CheckoutAgent()
@@ -128,10 +131,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="src/ui"), name="static")
+
 
 @app.get("/")
 async def root():
-    """Root endpoint with system information."""
+    """Serve the main UI page."""
+    return FileResponse("src/ui/index.html")
+
+
+@app.get("/api/info")
+async def api_info():
+    """API information endpoint."""
     return {
         "name": "CO2-Aware Shopping Assistant",
         "version": "1.0.0",

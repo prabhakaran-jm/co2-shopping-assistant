@@ -481,8 +481,8 @@ What would you like to explore? I'll make sure to highlight the environmental be
             # Add eco_score for compatibility with response formatting
             product["eco_score"] = max(1, min(10, int(10 * eco_factor)))
             
-            # Add price field for compatibility
-            product["price"] = price_units
+            # Add formatted price field for compatibility
+            product["price"] = f"${price_units:.2f}"
         
         return products
     
@@ -534,21 +534,58 @@ What would you like to explore? I'll make sure to highlight the environmental be
         }
     
     def _format_product_search_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
-        """Format product search results."""
+        """Format product search results into a JSON string for the frontend."""
         if not products:
-            return "I couldn't find any products matching your criteria. Try adjusting your search terms."
+            return json.dumps({
+                "products": [],
+                "message": "I couldn't find any products matching your criteria. Try adjusting your search terms."
+            })
+
+        image_base_url = "/ob-images"
         
-        response = f"🌱 Found {len(products)} eco-friendly products for you:\n\n"
+        formatted_products = []
+        for product in products:  # Process all products
+            picture_path = product.get('picture')
+            image_url = ""
+            if picture_path:
+                if picture_path.startswith('/'):
+                    image_url = f"{image_base_url}{picture_path}"
+                else:
+                    image_url = f"{image_base_url}/{picture_path}"
+
+            # Handle price formatting - extract from price_usd structure
+            price_value = 0.0
+            if 'price_usd' in product:
+                price_usd = product['price_usd']
+                if isinstance(price_usd, dict):
+                    units = price_usd.get('units', 0)
+                    nanos = price_usd.get('nanos', 0)
+                    price_value = units + (nanos / 1e9)
+                else:
+                    price_value = float(price_usd) if price_usd else 0.0
+            elif 'price' in product:
+                price_value = product.get('price', 0.0)
+                if isinstance(price_value, str):
+                    try:
+                        price_value = float(price_value)
+                    except (ValueError, TypeError):
+                        price_value = 0.0
+            
+            formatted_products.append({
+                "name": product.get("name", "N/A"),
+                "price": f"${price_value:.2f}",
+                "co2_emissions": f"{product.get('co2_emissions', 0.0):.1f}kg ({product.get('co2_rating', 'N/A')})",
+                "eco_score": f"{product.get('eco_score', 'N/A')}/10",
+                "description": product.get("description", ""),
+                "image_url": image_url
+            })
+
+        response_data = {
+            "products": formatted_products,
+            "message": f"🌱 Found {len(products)} eco-friendly products for you. Here they are:"
+        }
         
-        for i, product in enumerate(products[:5], 1):  # Show top 5
-            response += f"{i}. **{product['name']}** (${product['price']})\n"
-            response += f"   • CO2 Impact: {product['co2_emissions']:.1f}kg ({product['co2_rating']})\n"
-            response += f"   • Eco Score: {product['eco_score']}/10\n"
-            response += f"   • {product['description']}\n\n"
-        
-        response += "💡 **Environmental Benefits**: These products are selected for their low carbon footprint and sustainable materials. Would you like more details about any specific product?"
-        
-        return response
+        return json.dumps(response_data)
     
     def _format_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
         """Format recommendation results."""
@@ -558,7 +595,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
         response = f"🌱 Here are my top {len(recommendations)} sustainable recommendations:\n\n"
         
         for i, product in enumerate(recommendations, 1):
-            response += f"{i}. **{product['name']}** (${product['price']})\n"
+            response += f"{i}. **{product['name']}** (${product['price']:.2f})\n"
             response += f"   • Environmental Impact: {product['co2_emissions']:.1f}kg CO2\n"
             response += f"   • Why it's eco-friendly: {product['description']}\n\n"
         
@@ -574,7 +611,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
         response = "🔄 **Product Comparison** (Environmental Impact Focus):\n\n"
         
         for product in products:
-            response += f"**{product['name']}** (${product['price']})\n"
+            response += f"**{product['name']}** (${product['price']:.2f})\n"
             response += f"• CO2 Emissions: {product['co2_emissions']:.1f}kg\n"
             response += f"• Eco Score: {product['eco_score']}/10\n"
             response += f"• Rating: {product['co2_rating']}\n\n"

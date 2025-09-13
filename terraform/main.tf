@@ -53,6 +53,20 @@ resource "google_artifact_registry_repository" "co2_assistant_repo" {
   format        = "DOCKER"
 
   labels = var.labels
+  # Keep only the 10 most recent versions per image (package)
+  cleanup_policies {
+    id     = "keep-last-10"
+    action = "KEEP"
+
+    most_recent_versions {
+      keep_count = 10
+      # Optional: limit to certain images in this repo
+      # package_name_prefixes = ["co2-assistant"]
+    }
+  }
+
+  # Optional: set to true to dry-run the policy only
+  # cleanup_policy_dry_run = true  
 }
 
 # Create GKE Autopilot cluster

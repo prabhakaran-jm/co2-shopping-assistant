@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: co2-assistant
-        image: us-central1-docker.pkg.dev/PROJECT_ID/co2-assistant-repo/co2-assistant:latest
+        image: us-central1-docker.pkg.dev/gke10-ai-hackathon/co2-assistant-repo/co2-assistant:latest
         ports:
         - containerPort: 8000
         env:

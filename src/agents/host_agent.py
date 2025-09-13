@@ -438,10 +438,15 @@ Always provide helpful, environmentally conscious responses that guide users tow
             logger.info("HostAgent: Received response from agent", agent_name=primary_agent_name, response_type=type(response).__name__)
             
             # Process response
+            if isinstance(response, dict) and "products" in response:
+                return response  # It's already the structured product response
+            
             if isinstance(response, dict) and "response" in response:
+                # The actual response is nested, extract it
                 return response["response"]
-            else:
-                return str(response)
+            
+            # Fallback for simple string responses
+            return str(response)
                 
         except Exception as e:
             print(f"HOST: Exception in routing: {str(e)}")
