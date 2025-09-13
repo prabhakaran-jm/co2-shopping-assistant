@@ -1,2 +1,2 @@
-bucket = "tfstate-YOUR-PROJECT-ID"
+bucket = "tfstate-gke10-ai-hackathon"
 prefix = "co2-shopping-assistant/dev"

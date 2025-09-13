@@ -22,6 +22,27 @@ The Terraform configuration creates:
 5. **Docker**: For building and pushing images
 6. **Existing Terraform Backend**: GCS bucket for state storage
 
+## Configuration Setup
+
+Before running Terraform, you need to set up your configuration files:
+
+1. **Copy the example files:**
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   cp backend.hcl.example backend.hcl
+   ```
+
+2. **Update `terraform.tfvars`** with your specific values:
+   - `project_id`: Your GCP project ID
+   - `region`: Your preferred GCP region
+   - `cluster_name`: Name for your GKE cluster
+
+3. **Update `backend.hcl`** with your Terraform state bucket:
+   - `bucket`: Your GCS bucket name for Terraform state
+   - `prefix`: Path prefix for your state files
+
+> **Note**: `backend.hcl` and `terraform.tfvars` are in `.gitignore` and will not be committed to the repository. This ensures your specific configuration remains private.
+
 ## Quick Start
 
 ### 1. Set up Terraform variables

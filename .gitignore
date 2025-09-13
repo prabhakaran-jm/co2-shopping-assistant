@@ -50,6 +50,10 @@ terraform/*/terraform.tfvars.*
 **/terraform.tfvars.*
 !**/terraform.tfvars.example
 
+# Terraform backend configuration (user-specific)
+backend.hcl
+terraform/backend.hcl
+
 # Docker
 .dockerignore
 docker-compose.override.yml
