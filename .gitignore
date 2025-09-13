@@ -392,3 +392,4 @@ $RECYCLE.BIN/
 
 # Project specific ignores
 # Add any project-specific files or directories here
+terraform/envs/*.tfvars
