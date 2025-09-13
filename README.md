@@ -10,6 +10,14 @@ This project follows the GKE Turns 10 Hackathon guidelines by:
 - **Implementing ADK, MCP, and A2A** protocols for agent orchestration
 - **Deploying on GKE** with proper microservices architecture
 
+> **Built for Google Kubernetes Engine (GKE) Turns 10 Hackathon** 🎉
+> 
+> This project demonstrates the power of AI agents, MCP (Model Context Protocol), and A2A (Agent-to-Agent) communication on Google Kubernetes Engine.
+
+## 📄 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
 ## 🏗️ Architecture
 
 ### Core Agents (Built with Google ADK)

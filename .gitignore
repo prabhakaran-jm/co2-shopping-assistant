@@ -41,11 +41,14 @@ terraform.tfstate.backup
 crash.log
 crash.*.log
 
-# Additional Terraform sensitive files
+# Additional Terraform sensitive files (but allow .example files)
 terraform/*/terraform.tfvars
 terraform/*/terraform.tfvars.*
+!terraform.tfvars.example
+!**/terraform.tfvars.example
 **/terraform.tfvars
 **/terraform.tfvars.*
+!**/terraform.tfvars.example
 
 # Docker
 .dockerignore
