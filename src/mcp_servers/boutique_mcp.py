@@ -11,6 +11,16 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import structlog
 import httpx
+from grpc import aio
+import sys
+import os
+
+# Add protos directory to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'protos'))
+
+# Import generated gRPC stubs
+import demo_pb2 as pb2
+import demo_pb2_grpc as pb2_grpc
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +36,7 @@ class BoutiqueMCPServer:
     - Inventory checking
     """
     
-    def __init__(self, boutique_base_url: str = "http://online-boutique.default.svc.cluster.local"):
+    def __init__(self, boutique_base_url: str = "http://online-boutique.online-boutique.svc.cluster.local"):
         """
         Initialize the Boutique MCP Server.
         
@@ -36,13 +46,13 @@ class BoutiqueMCPServer:
         self.boutique_base_url = boutique_base_url
         self.running = False
         
-        # Service endpoints
+        # Service endpoints (mixed gRPC and HTTP)
         self.endpoints = {
-            "product_catalog": f"{boutique_base_url}/productcatalogservice",
-            "cart_service": f"{boutique_base_url}/cartservice",
-            "checkout_service": f"{boutique_base_url}/checkoutservice",
-            "recommendation_service": f"{boutique_base_url}/recommendationservice",
-            "currency_service": f"{boutique_base_url}/currencyservice"
+            "product_catalog": "productcatalogservice.online-boutique.svc.cluster.local:3550",  # gRPC
+            "cart_service": "http://cartservice.online-boutique.svc.cluster.local:7070",  # HTTP
+            "checkout_service": "http://checkoutservice.online-boutique.svc.cluster.local:5050",  # HTTP
+            "recommendation_service": "http://recommendationservice.online-boutique.svc.cluster.local:8080",  # HTTP
+            "currency_service": "http://currencyservice.online-boutique.svc.cluster.local:7000"  # HTTP
         }
         
         # HTTP client
@@ -69,11 +79,22 @@ class BoutiqueMCPServer:
         """Test connectivity to boutique services."""
         for service_name, endpoint in self.endpoints.items():
             try:
-                response = await self.client.get(f"{endpoint}/health", timeout=5.0)
-                if response.status_code == 200:
-                    logger.info("Service connectivity test passed", service=service_name)
+                if service_name == "product_catalog":
+                    # Test gRPC connectivity
+                    try:
+                        async with aio.insecure_channel(endpoint) as ch:
+                            stub = pb2_grpc.ProductCatalogServiceStub(ch)
+                            await stub.ListProducts(pb2.Empty())
+                        logger.info("gRPC service connectivity test passed", service=service_name)
+                    except Exception as grpc_error:
+                        logger.warning("gRPC service connectivity test failed", service=service_name, error=str(grpc_error))
                 else:
-                    logger.warning("Service connectivity test failed", service=service_name, status=response.status_code)
+                    # Test HTTP connectivity
+                    response = await self.client.get(f"{endpoint}/health", timeout=5.0)
+                    if response.status_code == 200:
+                        logger.info("HTTP service connectivity test passed", service=service_name)
+                    else:
+                        logger.warning("HTTP service connectivity test failed", service=service_name, status=response.status_code)
             except Exception as e:
                 logger.warning("Service connectivity test failed", service=service_name, error=str(e))
     
@@ -101,28 +122,53 @@ class BoutiqueMCPServer:
             List of products matching the search criteria
         """
         try:
-            params = {
-                "query": query,
-                "limit": limit
-            }
+            logger.info(f"Fetching products from {self.endpoints['product_catalog']} via gRPC")
             
-            if category:
-                params["category"] = category
-            if max_price:
-                params["max_price"] = max_price
-            if min_price:
-                params["min_price"] = min_price
-            
-            response = await self.client.get(
-                f"{self.endpoints['product_catalog']}/products",
-                params=params
-            )
-            response.raise_for_status()
-            
-            products = response.json().get("products", [])
-            
-            logger.info("Product search completed", query=query, results_count=len(products))
-            return products
+            # gRPC call to ProductCatalogService
+            async with aio.insecure_channel(self.endpoints['product_catalog']) as ch:
+                stub = pb2_grpc.ProductCatalogServiceStub(ch)
+                resp = await stub.ListProducts(pb2.Empty())
+                
+                # Convert gRPC response to our format
+                products = []
+                for p in resp.products:
+                    # Calculate price in units
+                    price_units = p.price_usd.units + (p.price_usd.nanos / 1e9)
+                    
+                    # Apply filters
+                    if category:
+                        cats = [c.lower() for c in p.categories]
+                        if category.lower() not in cats:
+                            continue
+                    
+                    if max_price and price_units > max_price:
+                        continue
+                    
+                    if min_price and price_units < min_price:
+                        continue
+                    
+                    product = {
+                        "id": p.id,
+                        "name": p.name,
+                        "description": p.description,
+                        "picture": p.picture,
+                        "price_usd": {
+                            "units": int(price_units),
+                            "nanos": int((price_units % 1) * 1e9),
+                            "currency_code": p.price_usd.currency_code
+                        },
+                        "categories": list(p.categories),
+                        "weight_kg": 0.5,  # Default weight for CO2 calculation
+                        "dimensions_cm": [20, 15, 10]  # Default dimensions
+                    }
+                    products.append(product)
+                    
+                    # Apply limit
+                    if len(products) >= limit:
+                        break
+                
+                logger.info("Product search completed", query=query, results_count=len(products))
+                return products
             
         except Exception as e:
             logger.error("Product search failed", query=query, error=str(e))
@@ -139,23 +185,35 @@ class BoutiqueMCPServer:
             Product details or None if not found
         """
         try:
-            response = await self.client.get(
-                f"{self.endpoints['product_catalog']}/products/{product_id}"
-            )
-            response.raise_for_status()
+            logger.info(f"Fetching product details from {self.endpoints['product_catalog']} via gRPC")
             
-            product = response.json()
+            # gRPC call to ProductCatalogService
+            async with aio.insecure_channel(self.endpoints['product_catalog']) as ch:
+                stub = pb2_grpc.ProductCatalogServiceStub(ch)
+                req = pb2.GetProductRequest(id=product_id)
+                resp = await stub.GetProduct(req)
+                
+                # Convert gRPC response to our format
+                price_units = resp.price_usd.units + (resp.price_usd.nanos / 1e9)
+                
+                product = {
+                    "id": resp.id,
+                    "name": resp.name,
+                    "description": resp.description,
+                    "picture": resp.picture,
+                    "price_usd": {
+                        "units": int(price_units),
+                        "nanos": int((price_units % 1) * 1e9),
+                        "currency_code": resp.price_usd.currency_code
+                    },
+                    "categories": list(resp.categories),
+                    "weight_kg": 0.5,  # Default weight for CO2 calculation
+                    "dimensions_cm": [20, 15, 10]  # Default dimensions
+                }
+                
+                logger.info("Product details retrieved", product_id=product_id)
+                return product
             
-            logger.info("Product details retrieved", product_id=product_id)
-            return product
-            
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.warning("Product not found", product_id=product_id)
-                return None
-            else:
-                logger.error("Product details retrieval failed", product_id=product_id, error=str(e))
-                return None
         except Exception as e:
             logger.error("Product details retrieval failed", product_id=product_id, error=str(e))
             return None
@@ -533,11 +591,27 @@ class BoutiqueMCPServer:
             # Check each service endpoint
             for service_name, endpoint in self.endpoints.items():
                 try:
-                    response = await self.client.get(f"{endpoint}/health", timeout=5.0)
-                    health_status["services"][service_name] = {
-                        "status": "healthy" if response.status_code == 200 else "unhealthy",
-                        "status_code": response.status_code
-                    }
+                    if service_name == "product_catalog":
+                        # Test gRPC connectivity
+                        try:
+                            async with aio.insecure_channel(endpoint) as ch:
+                                stub = pb2_grpc.ProductCatalogServiceStub(ch)
+                                await stub.ListProducts(pb2.Empty())
+                            health_status["services"][service_name] = {
+                                "status": "healthy"
+                            }
+                        except Exception as grpc_error:
+                            health_status["services"][service_name] = {
+                                "status": "unhealthy",
+                                "error": str(grpc_error)
+                            }
+                    else:
+                        # Test HTTP connectivity
+                        response = await self.client.get(f"{endpoint}/health", timeout=5.0)
+                        health_status["services"][service_name] = {
+                            "status": "healthy" if response.status_code == 200 else "unhealthy",
+                            "status_code": response.status_code
+                        }
                 except Exception as e:
                     health_status["services"][service_name] = {
                         "status": "unhealthy",

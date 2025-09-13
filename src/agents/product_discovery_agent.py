@@ -27,13 +27,16 @@ class ProductDiscoveryAgent(BaseAgent):
     - Suggests eco-friendly alternatives
     """
     
-    def __init__(self):
+    def __init__(self, boutique_mcp_server=None):
         """Initialize the Product Discovery Agent."""
         super().__init__(
             name="ProductDiscoveryAgent",
             description="Intelligent product search and recommendations with environmental consciousness",
             instruction=self._get_product_discovery_instruction()
         )
+        
+        # Store reference to MCP server
+        self.boutique_mcp_server = boutique_mcp_server
         
         # Initialize tools (will be connected to MCP servers)
         self.boutique_tools = []
@@ -336,7 +339,29 @@ What would you like to explore? I'll make sure to highlight the environmental be
     
     async def _search_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Search products using boutique MCP."""
-        # Mock implementation - in real implementation would call MCP server
+        try:
+            if not self.boutique_mcp_server:
+                logger.warning("Boutique MCP server not available, using fallback data")
+                return await self._get_fallback_products(search_params)
+            
+            # Call the boutique MCP server to search products
+            products = await self.boutique_mcp_server.search_products(
+                query=search_params.get("query", ""),
+                category=search_params.get("category"),
+                max_price=search_params.get("max_price"),
+                min_price=search_params.get("min_price"),
+                limit=search_params.get("limit", 10)
+            )
+            
+            logger.info("Retrieved products from boutique MCP", count=len(products))
+            return products
+            
+        except Exception as e:
+            logger.error("Failed to search products via MCP, using fallback", error=str(e))
+            return await self._get_fallback_products(search_params)
+    
+    async def _get_fallback_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get fallback products when MCP server is unavailable."""
         mock_products = [
             {
                 "id": "ECO-LAPTOP-001",
@@ -378,11 +403,22 @@ What would you like to explore? I'll make sure to highlight the environmental be
         """Enrich products with CO2 emission data."""
         # Mock implementation - in real implementation would call CO2 MCP
         for product in products:
-            # Mock CO2 data based on product type and eco score
+            # Extract price from the gRPC response structure
+            price_usd = product.get("price_usd", {})
+            price_units = price_usd.get("units", 0) + (price_usd.get("nanos", 0) / 1e9)
+            
+            # Mock CO2 data based on product type and price
             base_co2 = 50.0  # Base CO2 in kg
-            eco_factor = (10 - product.get("eco_score", 5)) / 10
+            # Use price as a proxy for eco-friendliness (lower price = more eco-friendly)
+            eco_factor = max(0.1, min(1.0, (1000 - price_units) / 1000))
             product["co2_emissions"] = base_co2 * eco_factor
             product["co2_rating"] = "Low" if product["co2_emissions"] < 30 else "Medium" if product["co2_emissions"] < 60 else "High"
+            
+            # Add eco_score for compatibility with response formatting
+            product["eco_score"] = max(1, min(10, int(10 * eco_factor)))
+            
+            # Add price field for compatibility
+            product["price"] = price_units
         
         return products
     
@@ -398,8 +434,24 @@ What would you like to explore? I'll make sure to highlight the environmental be
     
     async def _get_product_details(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed product information."""
-        # Mock implementation
-        mock_products = await self._search_products({})
+        try:
+            if not self.boutique_mcp_server:
+                logger.warning("Boutique MCP server not available, using fallback data")
+                return await self._get_fallback_product_details(product_id)
+            
+            # Call the boutique MCP server to get product details
+            product_details = await self.boutique_mcp_server.get_product_details(product_id)
+            
+            logger.info("Retrieved product details from boutique MCP", product_id=product_id)
+            return product_details
+            
+        except Exception as e:
+            logger.error("Failed to get product details via MCP, using fallback", error=str(e))
+            return await self._get_fallback_product_details(product_id)
+    
+    async def _get_fallback_product_details(self, product_id: str) -> Optional[Dict[str, Any]]:
+        """Get fallback product details when MCP server is unavailable."""
+        mock_products = await self._get_fallback_products({})
         for product in mock_products:
             if product["id"] == product_id or product_id.lower() in product["name"].lower():
                 return product

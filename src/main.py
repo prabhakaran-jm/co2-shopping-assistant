@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
         
         # Initialize Agents
         logger.info("Initializing AI agents...")
-        agents["ProductDiscoveryAgent"] = ProductDiscoveryAgent()
+        agents["ProductDiscoveryAgent"] = ProductDiscoveryAgent(boutique_mcp_server=mcp_servers["boutique"])
         agents["CO2CalculatorAgent"] = CO2CalculatorAgent()
         agents["CartManagementAgent"] = CartManagementAgent()
         agents["CheckoutAgent"] = CheckoutAgent()
