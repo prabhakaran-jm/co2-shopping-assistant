@@ -42,8 +42,9 @@ class CO2ShoppingAssistant {
         
         try {
             const response = await this.callAPI(message);
-            this.addMessage('assistant', response.response || response);
-            this.extractAndUpdateCO2Savings(response.response || response);
+            const messageText = response.response?.response || response.response || response;
+            this.addMessage('assistant', messageText);
+            this.extractAndUpdateCO2Savings(messageText);
         } catch (error) {
             this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             console.error('Error:', error);
