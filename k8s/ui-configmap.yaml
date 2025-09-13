@@ -448,7 +448,7 @@ data:
                         • Suggest sustainable alternatives<br>
                         • Calculate CO2 savings<br>
                         • Get eco-friendly recommendations<br><br>
-                        Try asking: "Show me eco-friendly laptops" or "What's the CO2 impact of this product?"
+                        Try asking: "Show me eco-friendly products" or "What's the CO2 impact of this product?"
                     `;
                     this.addMessage('assistant', welcomeMessage);
                 }
