@@ -81,9 +81,15 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 # Edit terraform/terraform.tfvars with your actual values
 
 # 3. Configure Terraform backend
+cp terraform/backend.hcl.example terraform/backend.hcl
 # Edit terraform/backend.hcl with your actual bucket name
 
-# 4. Set environment variables
+# 4. Set environment variables (OPTIONAL - scripts can read from .env file)
+# Option A: Create .env file
+echo "GOOGLE_PROJECT_ID=your-gcp-project-id" > .env
+echo "GOOGLE_AI_API_KEY=your-gemini-api-key" >> .env
+
+# Option B: Export environment variables
 export GOOGLE_AI_API_KEY="your-gemini-api-key"
 export GOOGLE_PROJECT_ID="your-gcp-project-id"
 ```
@@ -117,10 +123,18 @@ python -m src.main
 ### Deployment to GKE
 
 ```bash
-# Deploy complete infrastructure and applications
+# Option 1: Using .env file (recommended)
+./scripts/deploy-infra.sh
+
+# Option 2: Using command line parameters
 ./scripts/deploy-infra.sh \
   --project-id YOUR_PROJECT_ID \
   --gemini-api-key YOUR_API_KEY
+
+# Option 3: Using environment variables
+export GOOGLE_PROJECT_ID="your-project-id"
+export GOOGLE_AI_API_KEY="your-api-key"
+./scripts/deploy-infra.sh
 ```
 
 ## 📊 Key Features
