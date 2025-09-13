@@ -252,6 +252,13 @@ print_status "Deploying Online Boutique microservices to 'online-boutique' names
 # Create online-boutique namespace first
 kubectl create namespace online-boutique --dry-run=client -o yaml | kubectl apply -f -
 
+# Clean up any existing resources that might conflict with Helm
+print_status "Cleaning up existing resources in online-boutique namespace..."
+kubectl delete all --all -n online-boutique --ignore-not-found=true
+kubectl delete serviceaccounts --all -n online-boutique --ignore-not-found=true
+kubectl delete configmaps --all -n online-boutique --ignore-not-found=true
+kubectl delete secrets --all -n online-boutique --ignore-not-found=true
+
 if [ -d "online-boutique/helm-chart" ]; then
     helm upgrade --install online-boutique online-boutique/helm-chart \
         --namespace online-boutique \
