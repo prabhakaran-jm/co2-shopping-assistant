@@ -1,0 +1,56 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: co2-assistant-netpol
+  namespace: co2-assistant
+spec:
+  podSelector:
+    matchLabels:
+      app: co2-assistant
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: co2-assistant
+    - podSelector:
+        matchLabels:
+          app: co2-assistant
+    ports:
+    - protocol: TCP
+      port: 8000
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: online-boutique
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: online-boutique
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 8080
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS for external APIs
+    - protocol: TCP
+      port: 53   # DNS
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-egress
+  namespace: co2-assistant
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress

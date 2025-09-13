@@ -246,6 +246,26 @@ else
     kubectl delete secret --all -n online-boutique --ignore-not-found=true || true
     kubectl delete serviceaccount --all -n online-boutique --ignore-not-found=true || true
     
+    # Delete Production-Grade Components First
+    print_status "Deleting production-grade components..."
+    
+    # Delete HPA
+    print_status "Deleting Horizontal Pod Autoscaler..."
+    kubectl delete hpa co2-assistant-hpa -n co2-assistant --ignore-not-found=true || true
+    
+    # Delete monitoring components
+    print_status "Deleting monitoring components..."
+    kubectl delete configmap prometheus-config -n co2-assistant --ignore-not-found=true || true
+    kubectl delete configmap prometheus-rules -n co2-assistant --ignore-not-found=true || true
+    
+    # Delete security policies
+    print_status "Deleting security policies..."
+    kubectl delete networkpolicy co2-assistant-netpol -n co2-assistant --ignore-not-found=true || true
+    kubectl delete networkpolicy deny-all-egress -n co2-assistant --ignore-not-found=true || true
+    kubectl delete podsecuritypolicy co2-assistant-psp --ignore-not-found=true || true
+    kubectl delete role co2-assistant-psp-user -n co2-assistant --ignore-not-found=true || true
+    kubectl delete rolebinding co2-assistant-psp-binding -n co2-assistant --ignore-not-found=true || true
+    
     # Delete CO2 Assistant resources
     print_status "Deleting CO2 Assistant resources..."
     kubectl delete all --all -n co2-assistant --ignore-not-found=true || true
@@ -299,7 +319,14 @@ echo "  ✅ Firewall rules"
 echo "  ✅ All Terraform-managed resources"
 echo "  🔒 Static IPs preserved (including agent-layer-ip for reuse)"
 echo ""
-print_status "Resources cleaned up:"
+print_status "Production-grade components cleaned up:"
+echo "  🔒 Pod Security Policies"
+echo "  🔒 Network Policies"
+echo "  📊 Prometheus monitoring configuration"
+echo "  ⚡ Horizontal Pod Autoscaler"
+echo "  📈 Alert rules and metrics"
+echo ""
+print_status "Application resources cleaned up:"
 echo "  🗑️  CO2-Aware Shopping Assistant (co2-assistant namespace)"
 echo "  🗑️  Online Boutique microservices (online-boutique namespace)"
 echo "  🗑️  All ingress and load balancer resources"

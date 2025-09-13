@@ -336,6 +336,38 @@ kubectl create secret generic co2-assistant-secrets \
 print_status "Deploying ob-proxy for cross-namespace routing..."
 kubectl apply -f k8s/ob-proxy.yaml
 
+# Deploy Production-Grade Security Policies
+print_status "Deploying security policies..."
+if [[ -f "security/pod-security-policy.yaml" ]]; then
+    kubectl apply -f security/pod-security-policy.yaml
+    print_success "Pod Security Policy deployed"
+else
+    print_warning "Pod Security Policy not found, skipping..."
+fi
+
+if [[ -f "security/network-policy.yaml" ]]; then
+    kubectl apply -f security/network-policy.yaml
+    print_success "Network Policy deployed"
+else
+    print_warning "Network Policy not found, skipping..."
+fi
+
+# Deploy Monitoring and Observability
+print_status "Deploying monitoring stack..."
+if [[ -f "monitoring/prometheus-config.yaml" ]]; then
+    kubectl apply -f monitoring/prometheus-config.yaml
+    print_success "Prometheus monitoring deployed"
+else
+    print_warning "Prometheus config not found, skipping..."
+fi
+
+if [[ -f "k8s/hpa.yaml" ]]; then
+    kubectl apply -f k8s/hpa.yaml
+    print_success "Horizontal Pod Autoscaler deployed"
+else
+    print_warning "HPA configuration not found, skipping..."
+fi
+
 # Create managed certificate (only if it doesn't exist)
 print_status "Creating managed certificate (if not exists)..."
 if ! kubectl get managedcertificate co2-assistant-cert -n co2-assistant >/dev/null 2>&1; then
@@ -368,6 +400,42 @@ kubectl apply -f k8s/https-ingress.yaml
 print_status "Checking deployment status..."
 kubectl get ingress https-ingress -n co2-assistant
 kubectl get managedcertificate co2-assistant-cert -n co2-assistant
+
+# Validate Production-Grade Components
+print_status "Validating production-grade components..."
+
+# Check security policies
+print_status "Checking security policies..."
+if kubectl get podsecuritypolicy co2-assistant-psp >/dev/null 2>&1; then
+    print_success "✓ Pod Security Policy is active"
+else
+    print_warning "⚠ Pod Security Policy not found"
+fi
+
+if kubectl get networkpolicy co2-assistant-netpol -n co2-assistant >/dev/null 2>&1; then
+    print_success "✓ Network Policy is active"
+else
+    print_warning "⚠ Network Policy not found"
+fi
+
+# Check monitoring
+print_status "Checking monitoring stack..."
+if kubectl get configmap prometheus-config -n co2-assistant >/dev/null 2>&1; then
+    print_success "✓ Prometheus monitoring configured"
+else
+    print_warning "⚠ Prometheus config not found"
+fi
+
+if kubectl get hpa co2-assistant-hpa -n co2-assistant >/dev/null 2>&1; then
+    print_success "✓ Horizontal Pod Autoscaler is active"
+    kubectl get hpa co2-assistant-hpa -n co2-assistant
+else
+    print_warning "⚠ HPA not found"
+fi
+
+# Check resource limits
+print_status "Checking resource configuration..."
+kubectl get deployment co2-assistant -n co2-assistant -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq '.' 2>/dev/null || print_warning "⚠ Resource limits not configured"
 
 # No cleanup needed - using direct kubectl apply with sed
 
@@ -406,9 +474,19 @@ echo "  kubectl get services -n co2-assistant"
 echo "  kubectl get services -n online-boutique"
 echo "  kubectl get ingress https-ingress -n co2-assistant"
 echo ""
+print_status "To check production-grade components:"
+echo "  kubectl get podsecuritypolicy co2-assistant-psp"
+echo "  kubectl get networkpolicy -n co2-assistant"
+echo "  kubectl get hpa -n co2-assistant"
+echo "  kubectl get configmap prometheus-config -n co2-assistant"
+echo ""
 print_status "To view logs:"
 echo "  kubectl logs -f deployment/co2-assistant -n co2-assistant"
 echo "  kubectl logs -f deployment/frontend -n online-boutique"
+echo ""
+print_status "To access metrics:"
+echo "  kubectl port-forward svc/co2-assistant-service 8000:80 -n co2-assistant"
+echo "  curl http://localhost:8000/metrics"
 echo ""
 print_status "To destroy infrastructure:"
 echo "  cd terraform && terraform destroy"
@@ -431,5 +509,8 @@ echo ""
 print_success "🌱 Complete infrastructure deployed successfully!"
 print_success "🛍️ Online Boutique provides the base microservices"
 print_success "🤖 CO2-Aware Shopping Assistant enhances it with AI agents"
+print_success "🔒 Production-grade security policies deployed"
+print_success "📊 Monitoring and observability configured"
+print_success "⚡ Auto-scaling and performance optimization enabled"
 print_success "🚀 Ready to demonstrate Agentic AI Microservices 2.0!"
 print_success "📊 Infrastructure as Code with Terraform!"

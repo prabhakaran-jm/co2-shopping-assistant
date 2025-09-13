@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import structlog
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 from .agents.host_agent import HostAgent
 from .agents.product_discovery_agent import ProductDiscoveryAgent
@@ -47,6 +48,13 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
+
+# Prometheus metrics
+REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
+REQUEST_DURATION = Histogram('http_request_duration_seconds', 'HTTP request duration', ['method', 'endpoint'])
+ACTIVE_CONNECTIONS = Gauge('active_connections', 'Number of active connections')
+AGENT_REQUESTS = Counter('agent_requests_total', 'Total agent requests', ['agent_name', 'status'])
+AGENT_DURATION = Histogram('agent_request_duration_seconds', 'Agent request duration', ['agent_name'])
 
 # Global agent instances
 agents: Dict[str, Any] = {}
@@ -175,6 +183,13 @@ async def health_check():
     except Exception as e:
         logger.error("Health check failed", error=str(e))
         raise HTTPException(status_code=503, detail="Service unhealthy")
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    from fastapi.responses import Response
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/api/chat")

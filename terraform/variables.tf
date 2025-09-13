@@ -73,7 +73,7 @@ variable "enable_managed_cni" {
 variable "enable_network_policy" {
   description = "Enable network policy enforcement"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Environment Configuration
