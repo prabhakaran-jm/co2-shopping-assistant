@@ -21,7 +21,7 @@ class CO2ShoppingAssistant {
     
     addWelcomeMessage() {
         const welcomeMessage = `
-            Welcome to the CO2-Aware Shopping Assistant! í¼±<br><br>
+            Welcome to the CO2-Aware Shopping Assistant! ï¿½ï¿½ï¿½<br><br>
             I can help you:<br>
             â€¢ Find products with lower carbon footprint<br>
             â€¢ Suggest sustainable alternatives<br>
@@ -42,8 +42,8 @@ class CO2ShoppingAssistant {
         
         try {
             const response = await this.callAPI(message);
-            this.addMessage('assistant', response);
-            this.extractAndUpdateCO2Savings(response);
+            this.addMessage('assistant', response.response || response);
+            this.extractAndUpdateCO2Savings(response.response || response);
         } catch (error) {
             this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             console.error('Error:', error);
