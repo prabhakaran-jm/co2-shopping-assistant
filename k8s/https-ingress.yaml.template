@@ -1,6 +1,7 @@
 ---
 # HTTPS-only ingress configuration for both CO2 Assistant and Online Boutique
 # Uses ob-proxy service for cross-namespace routing to Online Boutique
+# This is a template file - use envsubst to substitute variables
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -17,7 +18,7 @@ metadata:
 spec:
   rules:
     # CO2 Assistant routes
-    - host: "assistant.cloudcarta.com"
+    - host: "${ASSISTANT_DOMAIN}"
       http:
         paths:
           - path: /api
@@ -43,7 +44,7 @@ spec:
                   number: 80
     
     # Online Boutique routes (via ob-proxy for cross-namespace routing)
-    - host: "ob.cloudcarta.com"
+    - host: "${ONLINE_BOUTIQUE_DOMAIN}"
       http:
         paths:
           - path: /

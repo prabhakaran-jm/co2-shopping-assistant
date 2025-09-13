@@ -114,7 +114,12 @@ cd co2-shopping-assistant
 echo "GOOGLE_PROJECT_ID=your-project-id" > .env
 echo "GOOGLE_AI_API_KEY=your-api-key" >> .env
 
-# 3. Run interactive deployment
+# 3. Configure domains (optional - defaults to yourdomain.com)
+echo "BASE_DOMAIN=yourdomain.com" >> .env
+echo "ASSISTANT_DOMAIN=assistant.yourdomain.com" >> .env
+echo "ONLINE_BOUTIQUE_DOMAIN=ob.yourdomain.com" >> .env
+
+# 4. Run interactive deployment
 ./scripts/deploy-infra.sh --project-id your-project-id --gemini-api-key your-api-key
 
 # The script will ask:
@@ -155,6 +160,12 @@ kubectl get configmap -n co2-assistant | grep prometheus
 ```
 
 ### **Access Applications**
+
+**🌐 Public URLs (Configure in .env file):**
+- **🌱 CO2-Aware Shopping Assistant**: `https://assistant.yourdomain.com`
+- **🛍️ Online Boutique**: `https://ob.yourdomain.com`
+
+**🔧 Local Port-Forward (Development):**
 ```bash
 # CO2 Assistant
 kubectl port-forward svc/co2-assistant-service 8000:80 -n co2-assistant

@@ -18,6 +18,9 @@
 .env.development
 secrets/
 credentials/
+
+# Generated files from templates
+k8s/https-ingress.yaml
 api-keys/
 *.secret
 *.confidential

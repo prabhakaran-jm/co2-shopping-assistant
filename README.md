@@ -394,7 +394,11 @@ kubectl get hpa -n co2-assistant
 # Check network policies
 kubectl get networkpolicy --all-namespaces
 
-# Access the application
+# Access the applications (configure domains in .env file)
+# 🌱 CO2-Aware Shopping Assistant: https://assistant.yourdomain.com
+# 🛍️ Online Boutique: https://ob.yourdomain.com
+
+# Or use port-forward for local access
 kubectl port-forward svc/co2-assistant-service 8000:80 -n co2-assistant
 ```
 

@@ -52,6 +52,11 @@ GEMINI_API_KEY="${GOOGLE_AI_API_KEY:-}"
 REGION="${REGION:-us-central1}"
 CLUSTER_NAME="${CLUSTER_NAME:-co2-assistant-cluster}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+# Domain configuration with defaults
+BASE_DOMAIN="${BASE_DOMAIN:-yourdomain.com}"
+ASSISTANT_DOMAIN="${ASSISTANT_DOMAIN:-assistant.${BASE_DOMAIN}}"
+ONLINE_BOUTIQUE_DOMAIN="${ONLINE_BOUTIQUE_DOMAIN:-ob.${BASE_DOMAIN}}"
 TERRAFORM_BACKEND_BUCKET="${TERRAFORM_BACKEND_BUCKET:-}"
 TERRAFORM_BACKEND_PREFIX="${TERRAFORM_BACKEND_PREFIX:-}"
 
@@ -481,7 +486,15 @@ else
     kubectl wait --for=condition=Ready --timeout=600s managedcertificate/co2-assistant-cert -n co2-assistant || print_warning "Certificate provisioning may take up to 15 minutes. Check status with: kubectl get managedcertificate -n co2-assistant"
 fi
 
-# Deploy unified ingress with custom domain
+# Generate and deploy unified ingress with custom domain
+print_status "Generating ingress configuration with domains: $ASSISTANT_DOMAIN, $ONLINE_BOUTIQUE_DOMAIN..."
+if [[ -f "k8s/https-ingress.yaml.template" ]]; then
+    envsubst < k8s/https-ingress.yaml.template > k8s/https-ingress.yaml
+    print_success "Ingress configuration generated from template"
+else
+    print_warning "Ingress template not found, using static configuration"
+fi
+
 print_status "Deploying unified ingress with custom domain..."
 kubectl apply -f k8s/https-ingress.yaml
 
@@ -617,6 +630,10 @@ print_success "📊 Basic monitoring and observability configured"
 print_success "⚡ Auto-scaling and performance optimization enabled"
 print_success "🚀 Ready to demonstrate Agentic AI Microservices 2.0!"
 print_success "📊 Infrastructure as Code with Terraform!"
+echo ""
+print_success "🌐 Access your applications:"
+print_success "  🌱 CO2-Aware Shopping Assistant: https://$ASSISTANT_DOMAIN"
+print_success "  🛍️ Online Boutique: https://$ONLINE_BOUTIQUE_DOMAIN"
 echo ""
 print_status "🎯 NEXT STEPS:"
 print_status "   Your infrastructure is ready! For environment-specific deployments with full features:"

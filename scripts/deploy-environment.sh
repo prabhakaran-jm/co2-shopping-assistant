@@ -17,6 +17,16 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Load environment variables from .env file if it exists
+if [[ -f ".env" ]]; then
+    print_status "Loading environment variables from .env file"
+    set -a  # automatically export all variables
+    source .env
+    set +a  # stop automatically exporting
+else
+    print_warning ".env file not found - using defaults only"
+fi
+
 # Get environment from command line
 ENVIRONMENT=${1:-dev}
 
@@ -25,7 +35,15 @@ if [[ "$ENVIRONMENT" != "dev" && "$ENVIRONMENT" != "prod" ]]; then
     exit 1
 fi
 
+# Domain configuration with defaults
+BASE_DOMAIN="${BASE_DOMAIN:-yourdomain.com}"
+ASSISTANT_DOMAIN="${ASSISTANT_DOMAIN:-assistant.${BASE_DOMAIN}}"
+ONLINE_BOUTIQUE_DOMAIN="${ONLINE_BOUTIQUE_DOMAIN:-ob.${BASE_DOMAIN}}"
+
 print_status "Deploying to $ENVIRONMENT environment..."
+print_status "Domain configuration:"
+print_status "  Assistant Domain: $ASSISTANT_DOMAIN"
+print_status "  Online Boutique Domain: $ONLINE_BOUTIQUE_DOMAIN"
 
 # Deploy with environment-specific configuration
 print_status "Applying Terraform configuration for $ENVIRONMENT..."
@@ -80,6 +98,16 @@ else
         --set loadGenerator.create=true
 fi
 
+# Generate and deploy ingress with environment-specific domains
+print_status "Generating ingress configuration with domains: $ASSISTANT_DOMAIN, $ONLINE_BOUTIQUE_DOMAIN..."
+if [[ -f "k8s/https-ingress.yaml.template" ]]; then
+    envsubst < k8s/https-ingress.yaml.template > k8s/https-ingress.yaml
+    kubectl apply -f k8s/https-ingress.yaml
+    print_success "Ingress configuration deployed with custom domains"
+else
+    print_warning "Ingress template not found, skipping ingress deployment"
+fi
+
 # Deploy CO2 Assistant
 print_status "Deploying CO2 Assistant..."
 kubectl apply -f k8s/namespaces.yaml
@@ -97,7 +125,11 @@ if [[ "$ENVIRONMENT" == "prod" ]]; then
     echo "  - Distributed tracing"
     echo "  - Grafana dashboards"
     echo ""
-    print_status "📊 Access URLs:"
+    print_status "🌐 Application Access URLs:"
+    echo "  🌱 CO2-Aware Shopping Assistant: https://$ASSISTANT_DOMAIN"
+    echo "  🛍️ Online Boutique: https://$ONLINE_BOUTIQUE_DOMAIN"
+    echo ""
+    print_status "📊 Monitoring Access URLs:"
     echo "  - Grafana: kubectl port-forward svc/grafana 3000:80 -n co2-assistant"
     echo "  - Jaeger: kubectl port-forward svc/jaeger-all-in-one 16686:16686 -n co2-assistant"
 else
@@ -106,6 +138,10 @@ else
     echo "  - Basic monitoring"
     echo "  - Load generator enabled"
     echo "  - Cost-optimized configuration"
+    echo ""
+    print_status "🌐 Application Access URLs:"
+    echo "  🌱 CO2-Aware Shopping Assistant: https://$ASSISTANT_DOMAIN"
+    echo "  🛍️ Online Boutique: https://$ONLINE_BOUTIQUE_DOMAIN"
 fi
 
 print_status "💰 Estimated Daily Cost: $([[ $ENVIRONMENT == 'prod' ]] && echo '$15-25' || echo '$5-8')"
