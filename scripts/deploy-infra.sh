@@ -19,21 +19,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Load environment variables from .env file if it exists
-if [[ -f ".env" ]]; then
-    print_status "Loading environment variables from .env file"
-    export $(grep -v '^#' .env | xargs)
-fi
-
-# Default values (can be overridden by .env file or command line)
-PROJECT_ID="${GOOGLE_PROJECT_ID:-}"
-GEMINI_API_KEY="${GOOGLE_AI_API_KEY:-}"
-REGION="${REGION:-us-central1}"
-CLUSTER_NAME="${CLUSTER_NAME:-co2-assistant-cluster}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-TERRAFORM_BACKEND_BUCKET="${TERRAFORM_BACKEND_BUCKET:-}"
-TERRAFORM_BACKEND_PREFIX="${TERRAFORM_BACKEND_PREFIX:-}"
-
 # Function to print colored output
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -50,6 +35,21 @@ print_warning() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Load environment variables from .env file if it exists
+if [[ -f ".env" ]]; then
+    print_status "Loading environment variables from .env file"
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Default values (can be overridden by .env file or command line)
+PROJECT_ID="${GOOGLE_PROJECT_ID:-}"
+GEMINI_API_KEY="${GOOGLE_AI_API_KEY:-}"
+REGION="${REGION:-us-central1}"
+CLUSTER_NAME="${CLUSTER_NAME:-co2-assistant-cluster}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+TERRAFORM_BACKEND_BUCKET="${TERRAFORM_BACKEND_BUCKET:-}"
+TERRAFORM_BACKEND_PREFIX="${TERRAFORM_BACKEND_PREFIX:-}"
 
 # Function to show usage
 show_usage() {
