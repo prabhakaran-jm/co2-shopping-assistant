@@ -5,8 +5,6 @@ This module provides the base agent class that all specialized agents inherit fr
 It implements common functionality and interfaces required by the ADK framework.
 """
 
-import asyncio
-import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -58,6 +56,9 @@ class BaseAgent(ABC):
             "average_response_time": 0.0,
             "total_response_time": 0.0
         }
+        
+        # A2A Agent Card (as mentioned in webinar)
+        self.agent_card = self._create_agent_card()
         
         logger.info(
             "Agent initialized",
@@ -245,3 +246,43 @@ Provide clear, helpful responses and explain the environmental benefits of your 
             f"status='{self.status}'"
             f")"
         )
+    
+    def _create_agent_card(self) -> Dict[str, Any]:
+        """
+        Create an A2A agent card for discovery and communication.
+        
+        This implements the agent card concept mentioned in the webinar,
+        allowing agents to present their capabilities to other agents.
+        
+        Returns:
+            Dictionary containing agent capabilities and metadata
+        """
+        return {
+            "agent_id": self.name,
+            "name": self.name,
+            "description": self.description,
+            "model": self.model,
+            "capabilities": [
+                "environmental_consciousness",
+                "product_search",
+                "recommendations",
+                "a2a_communication"
+            ],
+            "tools": [tool.name for tool in self.tools] if self.tools else [],
+            "status": self.status,
+            "created_at": self.created_at.isoformat(),
+            "examples": self._get_agent_examples(),
+            "tags": self._get_agent_tags()
+        }
+    
+    def _get_agent_examples(self) -> List[str]:
+        """Get example queries this agent can handle."""
+        return [
+            "Find eco-friendly products in category X",
+            "Recommend sustainable alternatives",
+            "Calculate environmental impact"
+        ]
+    
+    def _get_agent_tags(self) -> List[str]:
+        """Get tags describing this agent's specialization."""
+        return ["environmental", "shopping", "ai", "sustainability"]

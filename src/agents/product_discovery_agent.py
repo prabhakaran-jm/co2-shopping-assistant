@@ -48,6 +48,13 @@ class ProductDiscoveryAgent(BaseAgent):
         """Get instruction for the product discovery agent."""
         return """You are the Product Discovery Agent, specialized in helping users find products with environmental consciousness.
 
+You can work in multiple patterns:
+- SEQUENTIAL: For complex multi-step product searches
+- PARALLEL: For searching multiple categories simultaneously  
+- HIERARCHICAL: For breaking down complex shopping requests
+
+Always consider environmental impact in your recommendations.
+
 Your capabilities:
 1. Intelligent product search with environmental impact scoring
 2. Context-aware recommendations based on user preferences

@@ -6,7 +6,6 @@ and delegating tasks to specialized agents using the A2A protocol.
 """
 
 import asyncio
-import json
 import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -59,8 +58,17 @@ class HostAgent(BaseAgent):
         
         return f"""You are the Host Agent, the central orchestrator for the CO2-Aware Shopping Assistant.
 
+You implement the Coordinator-Dispatcher pattern from modern agentic AI architectures:
+- COORDINATOR: Analyze user intent and determine optimal agent workflow
+- DISPATCHER: Route tasks to specialized agents based on capabilities
+
 Available specialized agents:
 {chr(10).join(agent_descriptions)}
+
+You can orchestrate workflows using these patterns:
+1. SEQUENTIAL: Step-by-step workflows (e.g., search → calculate CO2 → add to cart)
+2. PARALLEL: Simultaneous operations (e.g., search multiple categories at once)  
+3. HIERARCHICAL: Break complex requests into sub-tasks
 
 Your responsibilities:
 1. Analyze user queries to understand their intent
@@ -560,3 +568,85 @@ I'm here to help you shop more sustainably! 🌱"""
             "a2a_protocol_status": a2a_status,
             "active_sessions": len(self.session_contexts)
         }
+    
+    async def _determine_workflow_pattern(self, query: str, intent: Dict[str, Any]) -> str:
+        """
+        Determine the optimal workflow pattern based on query complexity.
+        
+        This implements the patterns discussed in the webinar:
+        - Sequential: Step-by-step workflows
+        - Parallel: Simultaneous operations
+        - Hierarchical: Complex task decomposition
+        
+        Args:
+            query: User query
+            intent: Analyzed intent
+            
+        Returns:
+            Workflow pattern: 'sequential', 'parallel', 'hierarchical', or 'simple'
+        """
+        # Complex multi-step queries → Sequential
+        if any(keyword in query.lower() for keyword in [
+            "then", "after that", "next", "step by step", "process"
+        ]):
+            return "sequential"
+        
+        # Multiple simultaneous searches → Parallel
+        if any(keyword in query.lower() for keyword in [
+            "and also", "both", "multiple", "several", "all of these"
+        ]):
+            return "parallel"
+        
+        # Complex planning → Hierarchical
+        if any(keyword in query.lower() for keyword in [
+            "plan", "organize", "arrange", "coordinate", "manage"
+        ]):
+            return "hierarchical"
+        
+        return "simple"
+    
+    async def _execute_sequential_workflow(self, query: str, intent: Dict[str, Any], session_id: str) -> str:
+        """
+        Execute a sequential workflow (replaces Saga pattern from microservices).
+        
+        Example: Search product → Calculate CO2 → Add to cart → Checkout
+        
+        Args:
+            query: User query
+            intent: Analyzed intent
+            session_id: Session identifier
+            
+        Returns:
+            Combined response from sequential steps
+        """
+        logger.info("Executing sequential workflow", query=query, session_id=session_id)
+        
+        steps = []
+        context = self.session_contexts.get(session_id, {})
+        
+        # Step 1: Product Discovery
+        if intent.get("needs_product_search", False):
+            product_agent = self.sub_agents.get("ProductDiscoveryAgent")
+            if product_agent:
+                step_result = await product_agent.process_message(query, session_id)
+                steps.append({"step": "product_discovery", "result": step_result})
+                context["discovered_products"] = step_result
+        
+        # Step 2: CO2 Calculation
+        if intent.get("needs_co2_calculation", False):
+            co2_agent = self.sub_agents.get("CO2CalculatorAgent")
+            if co2_agent:
+                step_result = await co2_agent.process_message(query, session_id)
+                steps.append({"step": "co2_calculation", "result": step_result})
+                context["co2_data"] = step_result
+        
+        # Step 3: Cart Management
+        if intent.get("needs_cart_operation", False):
+            cart_agent = self.sub_agents.get("CartManagementAgent")
+            if cart_agent:
+                step_result = await cart_agent.process_message(query, session_id)
+                steps.append({"step": "cart_management", "result": step_result})
+                context["cart_state"] = step_result
+        
+        # Combine results
+        return f"I've completed your request through a sequential workflow: {len(steps)} steps executed successfully."

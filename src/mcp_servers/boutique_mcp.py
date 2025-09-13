@@ -29,11 +29,20 @@ class BoutiqueMCPServer:
     """
     MCP Server for Online Boutique integration.
     
+    This server implements the MCP (Model Context Protocol),
+    providing standardized access to Online Boutique APIs without requiring custom integrations.
+    
     This server provides:
     - Product catalog access
     - Cart operations
     - Order management
     - Inventory checking
+    
+    Key MCP Features:
+    - Standardized tool discovery
+    - JSON-RPC communication
+    - Resource management
+    - Prompt templates
     """
     
     def __init__(self, boutique_base_url: str = "http://online-boutique.online-boutique.svc.cluster.local"):
