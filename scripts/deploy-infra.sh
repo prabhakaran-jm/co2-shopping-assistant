@@ -39,7 +39,11 @@ print_error() {
 # Load environment variables from .env file if it exists
 if [[ -f ".env" ]]; then
     print_status "Loading environment variables from .env file"
-    export $(grep -v '^#' .env | xargs)
+    set -a  # automatically export all variables
+    source .env
+    set +a  # stop automatically exporting
+else
+    print_warning ".env file not found - using command line arguments and defaults only"
 fi
 
 # Default values (can be overridden by .env file or command line)
@@ -119,15 +123,18 @@ if [[ -z "$PROJECT_ID" ]]; then
     exit 1
 fi
 
-# Check if API key is provided, if not prompt for it
-if [[ -z "$GEMINI_API_KEY" ]]; then
-    echo -n "Enter your Google AI API key: "
-    read -s GEMINI_API_KEY
-    echo ""
+# Validate required environment variables
+print_status "Validating environment variables..."
+
+if [[ -z "$PROJECT_ID" ]]; then
+    print_error "PROJECT_ID is not set or empty"
+    print_error "Please set GOOGLE_PROJECT_ID in .env file or use --project-id argument"
+    exit 1
 fi
 
 if [[ -z "$GEMINI_API_KEY" ]]; then
-    print_error "Google AI API key is required"
+    print_error "GOOGLE_AI_API_KEY is not set or empty"
+    print_error "Please set GOOGLE_AI_API_KEY in .env file or use --gemini-api-key argument"
     exit 1
 fi
 
@@ -324,13 +331,43 @@ print_status "Waiting for CO2-Aware Shopping Assistant to be ready..."
 kubectl wait --for=condition=available --timeout=300s deployment/co2-assistant -n co2-assistant
 kubectl wait --for=condition=available --timeout=300s deployment/co2-assistant-ui -n co2-assistant
 
-# Create secrets
-print_status "Creating secrets..."
+# Create secrets with validation
+print_status "Creating secrets with validated environment variables..."
+
+# Delete existing secret first to ensure clean creation
+print_status "Removing any existing secret with empty values..."
+kubectl delete secret co2-assistant-secrets -n co2-assistant --ignore-not-found=true
+
+# Create new secret with actual values
+print_status "Creating secret with actual values..."
 kubectl create secret generic co2-assistant-secrets \
     --namespace=co2-assistant \
     --from-literal=google-ai-api-key="$GEMINI_API_KEY" \
-    --from-literal=google-project-id="$PROJECT_ID" \
-    --dry-run=client -o yaml | kubectl apply -f -
+    --from-literal=google-project-id="$PROJECT_ID"
+
+# Verify secret was created correctly
+print_status "Verifying secret creation..."
+SECRET_API_KEY=$(kubectl get secret co2-assistant-secrets -n co2-assistant -o jsonpath='{.data.google-ai-api-key}' | base64 -d)
+SECRET_PROJECT_ID=$(kubectl get secret co2-assistant-secrets -n co2-assistant -o jsonpath='{.data.google-project-id}' | base64 -d)
+
+if [[ -n "$SECRET_API_KEY" && -n "$SECRET_PROJECT_ID" ]]; then
+    print_success "✓ Secret created successfully with actual values"
+    print_success "✓ API Key: ${SECRET_API_KEY:0:10}..."
+    print_success "✓ Project ID: $SECRET_PROJECT_ID"
+else
+    print_error "✗ Secret creation failed - values are empty"
+    print_error "API Key length: ${#SECRET_API_KEY}"
+    print_error "Project ID length: ${#SECRET_PROJECT_ID}"
+    exit 1
+fi
+
+# Restart deployment to pick up new secret
+print_status "Restarting deployment to use new secret..."
+kubectl rollout restart deployment/co2-assistant -n co2-assistant
+
+# Wait for rollout to complete
+print_status "Waiting for rollout to complete..."
+kubectl rollout status deployment/co2-assistant -n co2-assistant --timeout=300s
 
 # Deploy ob-proxy for cross-namespace routing
 print_status "Deploying ob-proxy for cross-namespace routing..."
@@ -400,6 +437,20 @@ kubectl apply -f k8s/https-ingress.yaml
 print_status "Checking deployment status..."
 kubectl get ingress https-ingress -n co2-assistant
 kubectl get managedcertificate co2-assistant-cert -n co2-assistant
+
+# Final validation - check that pods are running successfully
+print_status "Final validation - checking pod status..."
+CO2_PODS=$(kubectl get pods -n co2-assistant -l app=co2-assistant --no-headers | wc -l)
+CO2_RUNNING_PODS=$(kubectl get pods -n co2-assistant -l app=co2-assistant --field-selector=status.phase=Running --no-headers | wc -l)
+
+if [[ "$CO2_RUNNING_PODS" -gt 0 && "$CO2_RUNNING_PODS" -eq "$CO2_PODS" ]]; then
+    print_success "✓ All CO2 Assistant pods are running successfully!"
+    kubectl get pods -n co2-assistant -l app=co2-assistant
+else
+    print_warning "⚠ Some CO2 Assistant pods may not be running properly"
+    kubectl get pods -n co2-assistant -l app=co2-assistant
+    print_status "Check pod logs with: kubectl logs -f deployment/co2-assistant -n co2-assistant"
+fi
 
 # Validate Production-Grade Components
 print_status "Validating production-grade components..."
