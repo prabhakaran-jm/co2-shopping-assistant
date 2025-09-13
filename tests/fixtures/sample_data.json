@@ -1,0 +1,147 @@
+{
+  "sample_products": [
+    {
+      "id": "laptop_eco_001",
+      "name": "EcoLaptop Air",
+      "price": 1299.99,
+      "category": "electronics",
+      "co2_emissions": 1.8,
+      "eco_rating": 9.2,
+      "description": "Ultra-lightweight laptop with sustainable materials",
+      "features": ["recycled aluminum", "low power consumption", "modular design"]
+    },
+    {
+      "id": "phone_sustainable_001",
+      "name": "Shiftphone",
+      "price": 699.99,
+      "category": "electronics",
+      "co2_emissions": 1.0,
+      "eco_rating": 9.5,
+      "description": "Repairable smartphone with 10-year warranty",
+      "features": ["modular design", "fair trade materials", "long warranty"]
+    },
+    {
+      "id": "laptop_budget_001",
+      "name": "SustainableBook",
+      "price": 799.99,
+      "category": "electronics",
+      "co2_emissions": 2.5,
+      "eco_rating": 7.8,
+      "description": "Budget-friendly eco laptop",
+      "features": ["recycled plastic", "energy efficient", "basic repairability"]
+    }
+  ],
+  "sample_cart": {
+    "session_id": "test_session_123",
+    "items": [
+      {
+        "product_id": "laptop_eco_001",
+        "quantity": 1,
+        "price": 1299.99,
+        "co2_emissions": 1.8
+      }
+    ],
+    "total": 1299.99,
+    "total_co2": 1.8
+  },
+  "sample_co2_data": {
+    "product_emissions": {
+      "laptop_eco_001": 1.8,
+      "phone_sustainable_001": 1.0,
+      "laptop_budget_001": 2.5
+    },
+    "shipping_emissions": {
+      "standard": 0.5,
+      "eco_friendly": 0.2,
+      "express": 0.8
+    },
+    "category_averages": {
+      "electronics": 2.1,
+      "clothing": 0.8,
+      "home_garden": 1.2
+    }
+  },
+  "sample_user_queries": [
+    "Find me eco-friendly laptops under $1500",
+    "What's the carbon footprint of this product?",
+    "Show me sustainable alternatives",
+    "Add this to my cart with eco shipping",
+    "Compare CO2 impact of different options",
+    "I want to reduce my environmental impact",
+    "What's the most sustainable choice?",
+    "How much CO2 will I save with this option?"
+  ],
+  "sample_responses": {
+    "product_search": "I found several eco-friendly options for you. Here are the top recommendations based on environmental impact and your budget.",
+    "co2_calculation": "This product has a carbon footprint of 1.8 kg CO2, which is 30% lower than the category average.",
+    "eco_recommendation": "I recommend the EcoLaptop Air - it has the lowest carbon footprint at 1.8 kg CO2 and excellent sustainability features.",
+    "cart_confirmation": "Added to your cart! This eco-friendly choice will save 0.7 kg CO2 compared to standard options.",
+    "checkout_success": "Order completed! You've made a sustainable choice that reduces your environmental impact by 1.5 kg CO2."
+  },
+  "test_scenarios": {
+    "eco_laptop_purchase": {
+      "description": "Complete eco-friendly laptop purchase journey",
+      "steps": [
+        "Search for eco-friendly laptops",
+        "Compare CO2 impact",
+        "Add best option to cart",
+        "Choose eco shipping",
+        "Complete checkout"
+      ],
+      "expected_co2_savings": 1.5
+    },
+    "sustainable_phone_purchase": {
+      "description": "Sustainable smartphone purchase journey",
+      "steps": [
+        "Search for sustainable phones",
+        "Check repairability features",
+        "Compare environmental impact",
+        "Add to cart",
+        "Checkout with eco shipping"
+      ],
+      "expected_co2_savings": 0.8
+    },
+    "co2_education": {
+      "description": "User learning about environmental impact",
+      "steps": [
+        "Ask about CO2 emissions",
+        "Learn about reduction strategies",
+        "Compare product impacts",
+        "Understand sustainability features"
+      ],
+      "expected_outcome": "increased_awareness"
+    }
+  },
+  "mock_api_responses": {
+    "boutique_api": {
+      "list_products": {
+        "products": [
+          {"id": "1", "name": "Eco Laptop", "price": 999.99},
+          {"id": "2", "name": "Green Phone", "price": 599.99}
+        ]
+      },
+      "get_product": {
+        "id": "1",
+        "name": "Eco Laptop",
+        "price": 999.99,
+        "description": "Environmentally friendly laptop"
+      },
+      "add_to_cart": {
+        "success": true,
+        "cart_id": "cart_123"
+      }
+    },
+    "co2_api": {
+      "calculate_product_co2": {
+        "co2_emissions": 2.5,
+        "unit": "kg",
+        "category": "electronics"
+      },
+      "calculate_shipping_co2": {
+        "co2_emissions": 0.8,
+        "unit": "kg",
+        "method": "standard"
+      }
+    }
+  }
+}

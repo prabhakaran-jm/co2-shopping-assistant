@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO2-Aware Shopping Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="chat-header">
+            <div class="eco-icon">í¼±</div>
+            <h1>CO2-Aware Shopping Assistant</h1>
+            <p>Your environmentally conscious shopping companion</p>
+            <div class="co2-indicator">
+                <span class="co2-icon">ï¿½ï¿½</span>
+                <span id="co2-savings">0 kg COâ‚‚ saved</span>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input-container">
+                <input type="text" id="chat-input" placeholder="Ask about products, CO2 impact, or get recommendations..." />
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+        
+        <div class="features">
+            <h3>ï¿½ï¿½ Environmental Features</h3>
+            <ul>
+                <li>CO2 impact analysis for products</li>
+                <li>Sustainable alternatives suggestions</li>
+                <li>Carbon footprint tracking</li>
+                <li>Eco-friendly shopping recommendations</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>

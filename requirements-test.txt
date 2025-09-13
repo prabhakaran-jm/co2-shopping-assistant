@@ -1,0 +1,34 @@
+# Testing dependencies for CO2-Aware Shopping Assistant
+
+# Core testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+
+# HTTP testing
+httpx>=0.24.0
+requests-mock>=1.11.0
+
+# Coverage reporting
+pytest-cov>=4.1.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+
+# Test data generation
+faker>=19.0.0
+
+# Mocking and fixtures
+responses>=0.23.0
+
+# FastAPI testing
+fastapi[all]>=0.100.0
+
+# Additional testing utilities
+pytest-xdist>=3.3.0  # Parallel test execution
+pytest-html>=3.2.0   # HTML test reports
+pytest-json-report>=1.5.0  # JSON test reports
+
+# Code quality
+pytest-flake8>=1.1.0
+pytest-mypy>=0.10.0

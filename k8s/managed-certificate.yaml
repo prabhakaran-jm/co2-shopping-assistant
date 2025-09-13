@@ -1,0 +1,9 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: co2-assistant-cert
+  namespace: co2-assistant
+spec:
+  domains:
+    - assistant.cloudcarta.com
+    - ob.cloudcarta.com

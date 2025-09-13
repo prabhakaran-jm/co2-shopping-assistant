@@ -1,0 +1,48 @@
+---
+# HTTPS-only ingress configuration for both CO2 Assistant and Online Boutique
+# Uses ob-proxy service for cross-namespace routing to Online Boutique
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: https-ingress
+  namespace: co2-assistant
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "agent-layer-ip"
+    networking.gke.io/managed-certificates: "co2-assistant-cert"
+    # Security headers
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+spec:
+  rules:
+    # CO2 Assistant routes
+    - host: "assistant.cloudcarta.com"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: co2-assistant-service
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: co2-assistant-ui-service
+                port:
+                  number: 80
+    
+    # Online Boutique routes (via ob-proxy for cross-namespace routing)
+    - host: "ob.cloudcarta.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ob-proxy
+                port:
+                  number: 80

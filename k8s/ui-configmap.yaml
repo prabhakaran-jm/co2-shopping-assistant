@@ -1,0 +1,525 @@
+---
+# ConfigMap for CO2 Assistant UI HTML content
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: co2-assistant-ui-config
+  namespace: co2-assistant
+  labels:
+    app: co2-assistant-ui
+    component: frontend
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>CO2-Aware Shopping Assistant</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .chat-container {
+                width: 90%;
+                max-width: 800px;
+                height: 80vh;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .chat-header {
+                background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 50%, #66BB6A 100%);
+                color: white;
+                padding: 20px;
+                text-align: center;
+                position: relative;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+
+            .chat-header h1 {
+                font-size: 1.5rem;
+                margin-bottom: 5px;
+            }
+
+            .chat-header p {
+                opacity: 0.9;
+                font-size: 0.9rem;
+            }
+
+            .co2-indicator {
+                position: absolute;
+                top: 10px;
+                right: 20px;
+                background: rgba(255, 255, 255, 0.2);
+                padding: 8px 12px;
+                border-radius: 20px;
+                font-size: 0.8rem;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+
+            .co2-icon {
+                font-size: 1.2rem;
+            }
+
+            .eco-icon {
+                position: absolute;
+                top: 15px;
+                right: 20px;
+                font-size: 1.5rem;
+            }
+
+            .chat-messages {
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                background: #f8f9fa;
+            }
+
+            .message {
+                margin-bottom: 15px;
+                display: flex;
+                align-items: flex-start;
+            }
+
+            .message.user {
+                justify-content: flex-end;
+            }
+
+            .message.assistant {
+                justify-content: flex-start;
+            }
+
+            .message-content {
+                max-width: 70%;
+                padding: 12px 16px;
+                border-radius: 18px;
+                word-wrap: break-word;
+                line-height: 1.4;
+            }
+
+            .message.user .message-content {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border-bottom-right-radius: 5px;
+            }
+
+            .message.assistant .message-content {
+                background: white;
+                color: #333;
+                border: 1px solid #e0e0e0;
+                border-bottom-left-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            }
+
+            .message-avatar {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                margin: 0 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8rem;
+                font-weight: bold;
+            }
+
+            .message.user .message-avatar {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                order: 1;
+            }
+
+            .message.assistant .message-avatar {
+                background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                color: white;
+            }
+
+            .chat-input-container {
+                padding: 20px;
+                background: white;
+                border-top: 1px solid #e0e0e0;
+            }
+
+            .chat-input-form {
+                display: flex;
+                gap: 10px;
+            }
+
+            .chat-input {
+                flex: 1;
+                padding: 12px 16px;
+                border: 2px solid #e0e0e0;
+                border-radius: 25px;
+                font-size: 1rem;
+                outline: none;
+                transition: border-color 0.3s ease;
+            }
+
+            .chat-input:focus {
+                border-color: #4CAF50;
+            }
+
+            .send-button {
+                padding: 12px 20px;
+                background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                color: white;
+                border: none;
+                border-radius: 25px;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: transform 0.2s ease;
+            }
+
+            .send-button:hover {
+                transform: translateY(-2px);
+            }
+
+            .send-button:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            .typing-indicator {
+                display: none;
+                padding: 10px 16px;
+                background: white;
+                border-radius: 18px;
+                border: 1px solid #e0e0e0;
+                margin-bottom: 15px;
+                max-width: 70%;
+            }
+
+            .typing-dots {
+                display: flex;
+                gap: 4px;
+            }
+
+            .typing-dot {
+                width: 8px;
+                height: 8px;
+                background: #4CAF50;
+                border-radius: 50%;
+                animation: typing 1.4s infinite ease-in-out;
+            }
+
+            .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+            .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+            @keyframes typing {
+                0%, 80%, 100% { transform: scale(0); }
+                40% { transform: scale(1); }
+            }
+
+            .co2-badge {
+                display: inline-block;
+                background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 100%);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 0.7rem;
+                font-weight: bold;
+                margin-left: 8px;
+            }
+
+            .eco-badge {
+                display: inline-block;
+                background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 0.7rem;
+                font-weight: bold;
+                margin-left: 8px;
+            }
+
+            .welcome-message {
+                text-align: center;
+                padding: 20px;
+                color: #666;
+            }
+
+            .welcome-message h3 {
+                color: #4CAF50;
+                margin-bottom: 10px;
+            }
+
+            .feature-list {
+                list-style: none;
+                padding: 0;
+            }
+
+            .feature-list li {
+                padding: 5px 0;
+                color: #555;
+            }
+
+            .feature-list li:before {
+                content: "🌱 ";
+                margin-right: 8px;
+            }
+
+            @media (max-width: 600px) {
+                .chat-container {
+                    width: 95%;
+                    height: 90vh;
+                }
+                
+                .message-content {
+                    max-width: 85%;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="eco-icon">🌱</div>
+                <h1>CO2-Aware Shopping Assistant</h1>
+                <p>Your environmentally conscious shopping companion</p>
+                <div class="co2-indicator">
+                    <span class="co2-icon">🌍</span>
+                    <span id="co2-savings">0 kg CO₂ saved</span>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    <h3>Welcome to your CO2-Aware Shopping Assistant! 🌱</h3>
+                    <p>I'm here to help you make environmentally conscious purchasing decisions.</p>
+                    <ul class="feature-list">
+                        <li>Find eco-friendly products</li>
+                        <li>Calculate CO2 emissions</li>
+                        <li>Suggest sustainable alternatives</li>
+                        <li>Optimize your shopping cart</li>
+                    </ul>
+                    <p>Try asking me something like:</p>
+                    <p><em>"Find me eco-friendly electronics under $200"</em></p>
+                </div>
+            </div>
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <form class="chat-input-form" id="chatForm">
+                    <input 
+                        type="text" 
+                        class="chat-input" 
+                        id="messageInput" 
+                        placeholder="Ask me about eco-friendly products..."
+                        autocomplete="off"
+                    >
+                    <button type="submit" class="send-button" id="sendButton">
+                        Send
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            class CO2ShoppingAssistant {
+                constructor() {
+                    this.chatMessages = document.getElementById('chatMessages');
+                    this.messageInput = document.getElementById('messageInput');
+                    this.sendButton = document.getElementById('sendButton');
+                    this.chatForm = document.getElementById('chatForm');
+                    this.typingIndicator = document.getElementById('typingIndicator');
+                    this.co2SavingsElement = document.getElementById('co2-savings');
+                    
+                    this.sessionId = this.generateSessionId();
+                    this.apiBaseUrl = window.location.origin;
+                    this.totalCO2Saved = 0;
+                    
+                    this.initializeEventListeners();
+                }
+                
+                generateSessionId() {
+                    return 'session_' + Math.random().toString(36).substr(2, 9);
+                }
+                
+                initializeEventListeners() {
+                    this.chatForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        this.sendMessage();
+                    });
+                    
+                    this.messageInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            this.sendMessage();
+                        }
+                    });
+                }
+                
+                async sendMessage() {
+                    const message = this.messageInput.value.trim();
+                    if (!message) return;
+                    
+                    // Add user message to chat
+                    this.addMessage(message, 'user');
+                    
+                    // Clear input and disable send button
+                    this.messageInput.value = '';
+                    this.sendButton.disabled = true;
+                    
+                    // Show typing indicator
+                    this.showTypingIndicator();
+                    
+                    try {
+                        // Send message to backend
+                        const response = await fetch(`${this.apiBaseUrl}/api/chat`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                message: message,
+                                session_id: this.sessionId
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        // Hide typing indicator
+                        this.hideTypingIndicator();
+                        
+                        // Add assistant response to chat
+                        this.addMessage(data.response, 'assistant');
+                        
+                        // Extract and update CO2 savings if present
+                        this.extractAndUpdateCO2Savings(data.response);
+                        
+                    } catch (error) {
+                        console.error('Error sending message:', error);
+                        
+                        // Hide typing indicator
+                        this.hideTypingIndicator();
+                        
+                        // Add error message
+                        this.addMessage(
+                            'I apologize, but I encountered an error. Please try again.',
+                            'assistant'
+                        );
+                    } finally {
+                        // Re-enable send button
+                        this.sendButton.disabled = false;
+                        this.messageInput.focus();
+                    }
+                }
+                
+                addMessage(content, sender) {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${sender}`;
+                    
+                    const avatar = document.createElement('div');
+                    avatar.className = 'message-avatar';
+                    avatar.textContent = sender === 'user' ? 'U' : '🌱';
+                    
+                    const messageContent = document.createElement('div');
+                    messageContent.className = 'message-content';
+                    
+                    // Format message content
+                    const formattedContent = this.formatMessage(content);
+                    messageContent.innerHTML = formattedContent;
+                    
+                    messageDiv.appendChild(avatar);
+                    messageDiv.appendChild(messageContent);
+                    
+                    this.chatMessages.appendChild(messageDiv);
+                    this.scrollToBottom();
+                }
+                
+                formatMessage(content) {
+                    // Convert markdown-like formatting to HTML
+                    let formatted = content
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/\n/g, '<br>');
+                    
+                    // Add CO2 badges for environmental impact mentions
+                    formatted = formatted.replace(
+                        /(\d+\.?\d*)\s*kg\s*CO2/g, 
+                        '$1 kg CO2<span class="co2-badge">CO₂</span>'
+                    );
+                    
+                    // Add eco badges for eco-friendly mentions
+                    formatted = formatted.replace(
+                        /(eco-friendly|sustainable|green|environmental)/gi, 
+                        '$1<span class="eco-badge">🌱</span>'
+                    );
+                    
+                    return formatted;
+                }
+                
+                showTypingIndicator() {
+                    this.typingIndicator.style.display = 'block';
+                    this.scrollToBottom();
+                }
+                
+                hideTypingIndicator() {
+                    this.typingIndicator.style.display = 'none';
+                }
+                
+                scrollToBottom() {
+                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                }
+                
+                extractAndUpdateCO2Savings(response) {
+                    // Look for CO2 savings in the response
+                    const co2Match = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]/i);
+                    if (co2Match) {
+                        const co2Amount = parseFloat(co2Match[1]);
+                        this.totalCO2Saved += co2Amount;
+                        this.updateCO2Display();
+                    }
+                }
+                
+                updateCO2Display() {
+                    if (this.co2SavingsElement) {
+                        this.co2SavingsElement.textContent = `${this.totalCO2Saved.toFixed(1)} kg CO₂ saved`;
+                        
+                        // Add a subtle animation when CO2 savings increase
+                        this.co2SavingsElement.style.transform = 'scale(1.1)';
+                        setTimeout(() => {
+                            this.co2SavingsElement.style.transform = 'scale(1)';
+                        }, 200);
+                    }
+                }
+            }
+            
+            // Initialize the chat application
+            document.addEventListener('DOMContentLoaded', () => {
+                new CO2ShoppingAssistant();
+            });
+        </script>
+    </body>
+    </html>

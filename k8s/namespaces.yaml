@@ -1,0 +1,10 @@
+---
+# CO2 Assistant namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: co2-assistant
+  labels:
+    name: co2-assistant
+    app: co2-aware-shopping-assistant
+    environment: production
