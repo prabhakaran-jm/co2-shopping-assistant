@@ -264,6 +264,7 @@ if [ -d "online-boutique/helm-chart" ]; then
         --namespace online-boutique \
         --create-namespace \
         --set frontend.replicaCount=1 \
+        --set frontend.externalService=false \
         --set adservice.replicaCount=1 \
         --set cartservice.replicaCount=1 \
         --set checkoutservice.replicaCount=1 \
