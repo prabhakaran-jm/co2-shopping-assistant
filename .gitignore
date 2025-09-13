@@ -35,6 +35,8 @@ terraform.tfvars.*
 *.tfstate.*
 *.tfplan
 *.tfplan.*
+tfplan
+tfplan-destroy
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate.backup
