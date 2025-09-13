@@ -174,11 +174,4 @@ co2-shopping-assistant/
 - **System Reliability**: 99.9% uptime with SLO monitoring
 - **Innovation**: Novel integration of environmental data with AI agents
 
-## 📝 Submission Requirements
 
-- [ ] Hosted project URL on GKE
-- [ ] Architecture diagram showing agent interactions
-- [ ] Demo video (<3 minutes)
-- [ ] Public GitHub repository
-- [ ] Comprehensive documentation
-# co2-shopping-assistant
