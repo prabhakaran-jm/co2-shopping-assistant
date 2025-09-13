@@ -149,20 +149,29 @@ echo "GOOGLE_AI_API_KEY=your-gemini-api-key" >> .env
 
 ### Alternative Deployment Methods
 
-#### **Option 1: Complete Infrastructure (Recommended)**
+#### **Option 1: Environment-Specific Deployment (Recommended)**
 ```bash
-# Full deployment with Terraform infrastructure
+# Development environment (cost-optimized, permissive security)
+./scripts/deploy-environment.sh dev
+
+# Production environment (full security, comprehensive monitoring)
+./scripts/deploy-environment.sh prod
+```
+
+#### **Option 2: Complete Infrastructure (Basic)**
+```bash
+# Full deployment with Terraform infrastructure (basic security/monitoring)
 ./scripts/deploy-infra.sh --project-id YOUR_PROJECT_ID --gemini-api-key YOUR_API_KEY
 ```
 
-#### **Option 2: Using Environment Variables**
+#### **Option 3: Using Environment Variables**
 ```bash
 export GOOGLE_PROJECT_ID="your-project-id"
 export GOOGLE_AI_API_KEY="your-api-key"
 ./scripts/deploy-infra.sh
 ```
 
-#### **Option 3: Environment-Specific Terraform**
+#### **Option 4: Environment-Specific Terraform**
 ```bash
 cd terraform
 terraform init -backend-config=backend.hcl

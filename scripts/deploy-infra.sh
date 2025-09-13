@@ -69,16 +69,25 @@ show_usage() {
     echo "  --image-tag TAG            Docker image tag (default: latest)"
     echo "  --help                     Show this help message"
     echo ""
-    echo "This script will:"
-    echo "  1. Initialize Terraform with backend.hcl configuration"
-    echo "  2. Create GKE Autopilot cluster and Artifact Registry"
-    echo "  3. Deploy Online Boutique microservices"
-    echo "  4. Deploy CO2-Aware Shopping Assistant"
-    echo "  5. Set up monitoring and ingress"
+    echo "This script provides two deployment options:"
+    echo "  1) Infrastructure Only - Terraform + Basic Kubernetes setup"
+    echo "  2) Environment-Specific - Redirects to deploy-environment.sh (Recommended)"
+    echo ""
+    echo "The script will:"
+    echo "  1. Ask you to choose deployment approach"
+    echo "  2. Initialize Terraform with backend.hcl configuration"
+    echo "  3. Create GKE Autopilot cluster and Artifact Registry"
+    echo "  4. Deploy Online Boutique microservices"
+    echo "  5. Deploy CO2-Aware Shopping Assistant"
+    echo "  6. Set up basic monitoring and ingress"
     echo ""
     echo "Examples:"
     echo "  $0 --project-id my-project --gemini-api-key my-api-key"
     echo "  $0 --project-id my-project --region europe-west1"
+    echo ""
+    echo "For environment-specific deployments (Recommended):"
+    echo "  ./scripts/deploy-environment.sh dev    # Development"
+    echo "  ./scripts/deploy-environment.sh prod   # Production"
 }
 
 # Parse command line arguments
@@ -115,6 +124,40 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Interactive deployment mode selection
+print_status "🚀 CO2-Aware Shopping Assistant Deployment Options"
+echo ""
+print_status "Choose your deployment approach:"
+echo "  1) Infrastructure Only (Terraform + Basic Kubernetes) - Quick setup"
+echo "  2) Environment-Specific Deployment (Recommended) - Full security & monitoring"
+echo ""
+echo -n "Enter your choice (1 or 2): "
+read -r DEPLOYMENT_CHOICE
+
+case $DEPLOYMENT_CHOICE in
+    1)
+        print_status "Selected: Infrastructure Only deployment"
+        DEPLOYMENT_MODE="infrastructure"
+        ;;
+    2)
+        print_status "Selected: Environment-Specific deployment"
+        print_success "Please run: ./scripts/deploy-environment.sh dev    # Development"
+        print_success "Or run:      ./scripts/deploy-environment.sh prod   # Production"
+        print_status "This will provide:"
+        print_status "  ✅ Environment-specific security policies"
+        print_status "  ✅ Appropriate monitoring stack (dev/prod)"
+        print_status "  ✅ Cost-optimized resource allocation"
+        print_status "  ✅ Production-ready features"
+        echo ""
+        print_warning "Exiting deploy-infra.sh. Please use deploy-environment.sh for full deployment."
+        exit 0
+        ;;
+    *)
+        print_error "Invalid choice. Please run the script again and select 1 or 2."
+        exit 1
+        ;;
+esac
 
 # Validate required parameters
 if [[ -z "$PROJECT_ID" ]]; then
@@ -382,20 +425,29 @@ else
     print_warning "Pod Security Policy not found, skipping..."
 fi
 
-if [[ -f "security/network-policy.yaml" ]]; then
-    kubectl apply -f security/network-policy.yaml
-    print_success "Network Policy deployed"
-else
-    print_warning "Network Policy not found, skipping..."
-fi
+# Network policies are environment-specific - use deploy-environment.sh for proper deployment
+print_status "Network policies are environment-specific. Use deploy-environment.sh for proper deployment."
+print_warning "Skipping network policy deployment in deploy-infra.sh"
 
 # Deploy Monitoring and Observability
 print_status "Deploying monitoring stack..."
-if [[ -f "monitoring/prometheus-config.yaml" ]]; then
-    kubectl apply -f monitoring/prometheus-config.yaml
-    print_success "Prometheus monitoring deployed"
+# Deploy basic monitoring (environment-specific monitoring available via deploy-environment.sh)
+if [[ -f "monitoring/prometheus-config-dev.yaml" ]]; then
+    kubectl apply -f monitoring/prometheus-config-dev.yaml
+    print_success "Basic Prometheus monitoring deployed (dev configuration)"
+elif [[ -f "monitoring/prometheus-config-prod.yaml" ]]; then
+    kubectl apply -f monitoring/prometheus-config-prod.yaml
+    print_success "Prometheus monitoring deployed (prod configuration)"
 else
     print_warning "Prometheus config not found, skipping..."
+fi
+
+# Deploy observability stack (basic configuration)
+if [[ -f "monitoring/observability-stack.yaml" ]]; then
+    kubectl apply -f monitoring/observability-stack.yaml -l environment=dev
+    print_success "Basic observability stack deployed"
+else
+    print_warning "Observability stack not found, skipping..."
 fi
 
 if [[ -f "k8s/hpa.yaml" ]]; then
@@ -557,11 +609,22 @@ echo "  │  ├─ MCP Servers                                        │"
 echo "  │  └─ Modern Web UI                                     │"
 echo "  └─────────────────────────────────────────────────────────┘"
 echo ""
-print_success "🌱 Complete infrastructure deployed successfully!"
+print_success "🌱 Infrastructure deployment completed successfully!"
 print_success "🛍️ Online Boutique provides the base microservices"
 print_success "🤖 CO2-Aware Shopping Assistant enhances it with AI agents"
-print_success "🔒 Production-grade security policies deployed"
-print_success "📊 Monitoring and observability configured"
+print_success "🔒 Basic security policies deployed"
+print_success "📊 Basic monitoring and observability configured"
 print_success "⚡ Auto-scaling and performance optimization enabled"
 print_success "🚀 Ready to demonstrate Agentic AI Microservices 2.0!"
 print_success "📊 Infrastructure as Code with Terraform!"
+echo ""
+print_status "🎯 NEXT STEPS:"
+print_status "   Your infrastructure is ready! For environment-specific deployments with full features:"
+print_status "   ./scripts/deploy-environment.sh dev    # Development (permissive, cost-optimized)"
+print_status "   ./scripts/deploy-environment.sh prod   # Production (strict security, full monitoring)"
+echo ""
+print_status "💡 What you get with environment-specific deployment:"
+print_status "   ✅ Environment-specific network policies (dev: permissive, prod: strict)"
+print_status "   ✅ Appropriate monitoring stack (dev: basic, prod: comprehensive)"
+print_status "   ✅ Cost optimization (dev: $5-8/day, prod: $15-25/day)"
+print_status "   ✅ Production-ready security and observability"
