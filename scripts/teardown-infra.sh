@@ -225,9 +225,15 @@ else
     kubectl delete configmap co2-assistant-ui-config -n co2-assistant --ignore-not-found=true || true
     kubectl delete configmap ob-proxy-config -n co2-assistant --ignore-not-found=true || true
     
-    # Delete managed certificates
-    print_status "Deleting managed certificates..."
-    kubectl delete managedcertificate co2-assistant-cert -n co2-assistant --ignore-not-found=true || true
+    # Delete managed certificates (only if --delete-certificates flag is provided)
+    if [[ "$1" == "--delete-certificates" ]]; then
+        print_status "Deleting managed certificates..."
+        kubectl delete managedcertificate co2-assistant-cert -n co2-assistant --ignore-not-found=true || true
+    else
+        print_status "Preserving managed certificates (use --delete-certificates to remove them)"
+        print_status "Certificate status:"
+        kubectl get managedcertificate co2-assistant-cert -n co2-assistant 2>/dev/null || print_warning "Certificate not found"
+    fi
     
     # Delete secrets
     print_status "Deleting secrets..."

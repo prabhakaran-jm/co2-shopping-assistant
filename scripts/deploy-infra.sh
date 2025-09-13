@@ -336,27 +336,32 @@ kubectl create secret generic co2-assistant-secrets \
 print_status "Deploying ob-proxy for cross-namespace routing..."
 kubectl apply -f k8s/ob-proxy.yaml
 
-# Create managed certificate
-print_status "Creating managed certificate..."
-cat <<EOF | kubectl apply -f -
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: co2-assistant-cert
-  namespace: co2-assistant
-spec:
-  domains:
-    - assistant.cloudcarta.com
-    - ob.cloudcarta.com
-EOF
+# Create managed certificate (only if it doesn't exist)
+print_status "Creating managed certificate (if not exists)..."
+if ! kubectl get managedcertificate co2-assistant-cert -n co2-assistant >/dev/null 2>&1; then
+    print_status "Certificate doesn't exist, creating new one..."
+    kubectl apply -f k8s/managed-certificate.yaml
+else
+    print_status "Certificate already exists, preserving existing certificate..."
+    kubectl get managedcertificate co2-assistant-cert -n co2-assistant
+fi
 
-# Wait for certificate to be ready (with longer timeout)
-print_status "Waiting for certificate to be ready..."
-kubectl wait --for=condition=Ready --timeout=600s managedcertificate/co2-assistant-cert -n co2-assistant || print_warning "Certificate provisioning may take up to 15 minutes. Check status with: kubectl get managedcertificate -n co2-assistant"
+# Check certificate status
+print_status "Checking certificate status..."
+CERT_STATUS=$(kubectl get managedcertificate co2-assistant-cert -n co2-assistant -o jsonpath='{.status.certificateStatus}' 2>/dev/null || echo "Unknown")
+
+if [[ "$CERT_STATUS" == "Active" ]]; then
+    print_success "Certificate is already active and ready!"
+elif [[ "$CERT_STATUS" == "Provisioning" ]]; then
+    print_warning "Certificate is still provisioning. This may take 15-30 minutes."
+    print_status "You can check status with: kubectl get managedcertificate co2-assistant-cert -n co2-assistant"
+else
+    print_warning "Certificate status: $CERT_STATUS. Waiting up to 10 minutes..."
+    kubectl wait --for=condition=Ready --timeout=600s managedcertificate/co2-assistant-cert -n co2-assistant || print_warning "Certificate provisioning may take up to 15 minutes. Check status with: kubectl get managedcertificate -n co2-assistant"
+fi
 
 # Deploy unified ingress with custom domain
 print_status "Deploying unified ingress with custom domain..."
-kubectl apply -f k8s/managed-certificate.yaml
 kubectl apply -f k8s/https-ingress.yaml
 
 # Check final status (non-blocking)
