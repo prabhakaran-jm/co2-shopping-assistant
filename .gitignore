@@ -29,6 +29,7 @@ google-credentials.json
 application_default_credentials.json
 
 # Terraform
+*.tfvars
 terraform.tfvars
 terraform.tfvars.*
 *.tfstate
