@@ -7,15 +7,12 @@ from unittest.mock import Mock, patch, AsyncMock
 import sys
 import os
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-
-from agents.base_agent import BaseAgent
-from agents.host_agent import HostAgent
-from agents.product_discovery_agent import ProductDiscoveryAgent
-from agents.co2_calculator_agent import CO2CalculatorAgent
-from agents.cart_management_agent import CartManagementAgent
-from agents.checkout_agent import CheckoutAgent
+from src.agents.base_agent import BaseAgent
+from src.agents.host_agent import HostAgent
+from src.agents.product_discovery_agent import ProductDiscoveryAgent
+from src.agents.co2_calculator_agent import CO2CalculatorAgent
+from src.agents.cart_management_agent import CartManagementAgent
+from src.agents.checkout_agent import CheckoutAgent
 
 
 class TestBaseAgent:
@@ -64,7 +61,7 @@ class TestHostAgent:
     @pytest.fixture
     def host_agent(self, mock_agents):
         """Create host agent with mocked dependencies"""
-        with patch('agents.host_agent.LlmAgent') as mock_llm_agent:
+        with patch('src.agents.host_agent.LlmAgent') as mock_llm_agent:
             mock_llm_agent.return_value = Mock()
             agent = HostAgent()
             agent.specialized_agents = mock_agents
@@ -109,7 +106,7 @@ class TestProductDiscoveryAgent:
     @pytest.fixture
     def product_agent(self):
         """Create product discovery agent with mocked dependencies"""
-        with patch('agents.product_discovery_agent.LlmAgent') as mock_llm_agent:
+        with patch('src.agents.product_discovery_agent.LlmAgent') as mock_llm_agent:
             mock_llm_agent.return_value = Mock()
             agent = ProductDiscoveryAgent()
             return agent
@@ -138,7 +135,7 @@ class TestCO2CalculatorAgent:
     @pytest.fixture
     def co2_agent(self):
         """Create CO2 calculator agent with mocked dependencies"""
-        with patch('agents.co2_calculator_agent.LlmAgent') as mock_llm_agent:
+        with patch('src.agents.co2_calculator_agent.LlmAgent') as mock_llm_agent:
             mock_llm_agent.return_value = Mock()
             agent = CO2CalculatorAgent()
             return agent
@@ -167,7 +164,7 @@ class TestCartManagementAgent:
     @pytest.fixture
     def cart_agent(self):
         """Create cart management agent with mocked dependencies"""
-        with patch('agents.cart_management_agent.LlmAgent') as mock_llm_agent:
+        with patch('src.agents.cart_management_agent.LlmAgent') as mock_llm_agent:
             mock_llm_agent.return_value = Mock()
             agent = CartManagementAgent()
             return agent
@@ -195,7 +192,7 @@ class TestCheckoutAgent:
     @pytest.fixture
     def checkout_agent(self):
         """Create checkout agent with mocked dependencies"""
-        with patch('agents.checkout_agent.LlmAgent') as mock_llm_agent:
+        with patch('src.agents.checkout_agent.LlmAgent') as mock_llm_agent:
             mock_llm_agent.return_value = Mock()
             agent = CheckoutAgent()
             return agent
@@ -226,7 +223,7 @@ class TestAgentIntegration:
         # This would test the A2A protocol integration
         # For now, we'll mock the interaction
         
-        with patch('agents.host_agent.HostAgent') as mock_host:
+        with patch('src.agents.host_agent.HostAgent') as mock_host:
             mock_host.return_value.run.return_value = "Complete workflow executed"
             
             # Simulate a complex workflow
@@ -236,6 +233,34 @@ class TestAgentIntegration:
             
             assert result is not None
             assert "workflow" in result.lower()
+
+class TestProductDiscoveryAgentRequestParsing:
+    """Test the request parsing of the Product Discovery Agent"""
+
+    @pytest.fixture
+    def product_agent(self):
+        """Create a ProductDiscoveryAgent instance for testing"""
+        return ProductDiscoveryAgent()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("message, expected_type", [
+        ("show hairdryer", "search"),
+        ("show tanktop", "search"),
+        ("find sunglasses", "search"),
+        ("search for a watch", "search"),
+        ("show me all products", "search"),
+        ("recommend some eco-friendly shoes", "recommend"),
+        ("compare laptops", "compare"),
+        ("tell me about the camera", "details"),
+        ("what is the price of the phone", "details"),
+        ("show", "general"),
+        ("hairdryer", "search"),
+        ("I want to buy a new phone", "general"),
+    ])
+    async def test_parse_request_type(self, product_agent, message, expected_type):
+        """Test that _parse_request_type correctly classifies user queries"""
+        request_type = await product_agent._parse_request_type(message)
+        assert request_type == expected_type
 
 
 if __name__ == "__main__":
