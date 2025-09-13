@@ -8,15 +8,15 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: co2-assistant
-  minReplicas: 3
-  maxReplicas: 10
+  minReplicas: 2
+  maxReplicas: 6
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70
+        averageUtilization: 80
   - type: Resource
     resource:
       name: memory

@@ -1,14 +1,10 @@
-# Terraform Variables Configuration
-# Copy this file to terraform.tfvars and update with your values
+# Example Terraform Variables Configuration
+# Copy this file to terraform.tfvars and update with your actual values
 
 # Google Cloud Project Configuration
 project_id = "your-gcp-project-id"
 region = "us-central1"
-zone = "us-central1-a"
-
-# GKE Cluster Configuration
 cluster_name = "co2-assistant-cluster"
-deletion_protection = false
 
 # Namespace Configuration
 co2_assistant_namespace = "co2-assistant"
@@ -17,8 +13,9 @@ online_boutique_namespace = "online-boutique"
 # Artifact Registry Configuration
 artifact_registry_repo_name = "co2-assistant-repo"
 
-# Feature Flags
-enable_network_policy = false  # Set to false for GKE Autopilot
+# Security and Infrastructure Settings
+deletion_protection = false
+enable_network_policy = true
 enable_managed_prometheus = true
 enable_managed_cni = true
 

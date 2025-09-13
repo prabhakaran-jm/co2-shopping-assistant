@@ -1,5 +1,6 @@
-# Terraform Backend Configuration Example
-# Copy this file to backend.hcl and update with your specific values
+# Example Terraform Backend Configuration
+# Copy this file to backend.hcl and update with your actual values
 
-bucket = "tfstate-YOUR-PROJECT-ID"
-prefix = "co2-shopping-assistant/dev"
+# Google Cloud Storage Backend Configuration
+bucket = "your-terraform-state-bucket"
+prefix = "co2-shopping-assistant/terraform/state"

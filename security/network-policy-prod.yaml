@@ -1,0 +1,88 @@
+# Production Network Policy - Strict Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: co2-assistant-netpol-prod
+  namespace: co2-assistant
+  labels:
+    environment: prod
+    app: co2-assistant
+spec:
+  podSelector:
+    matchLabels:
+      app: co2-assistant
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from ingress controller only
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow ingress from same namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: co2-assistant
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS to external APIs (Gemini)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow communication to online-boutique
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: online-boutique
+    ports:
+    - protocol: TCP
+      port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: online-boutique-netpol-prod
+  namespace: online-boutique
+  labels:
+    environment: prod
+    app: online-boutique
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from co2-assistant namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: co2-assistant
+  # Allow internal communication
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: online-boutique
+  egress:
+  # Allow DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow internal communication
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: online-boutique

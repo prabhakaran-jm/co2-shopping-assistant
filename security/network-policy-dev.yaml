@@ -1,0 +1,44 @@
+# Development Network Policy - Permissive for Testing
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: co2-assistant-netpol-dev
+  namespace: co2-assistant
+  labels:
+    environment: dev
+    app: co2-assistant
+spec:
+  podSelector:
+    matchLabels:
+      app: co2-assistant
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector: {}  # Allow from all namespaces (dev only)
+    - podSelector: {}        # Allow from all pods (dev only)
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - {}  # Allow all egress traffic (dev only)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: online-boutique-netpol-dev
+  namespace: online-boutique
+  labels:
+    environment: dev
+    app: online-boutique
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector: {}  # Permissive for development
+  egress:
+  - {}  # Allow all egress (dev only)

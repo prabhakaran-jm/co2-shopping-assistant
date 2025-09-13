@@ -1,0 +1,51 @@
+# Development Monitoring - Basic Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config-dev
+  namespace: co2-assistant
+  labels:
+    environment: dev
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s      # Longer interval for cost savings
+      evaluation_interval: 30s
+    
+    rule_files:
+      - "alert_rules.yml"
+    
+    scrape_configs:
+      # CO2 Assistant metrics (basic)
+      - job_name: 'co2-assistant-dev'
+        static_configs:
+          - targets: ['co2-assistant-service:80']
+        metrics_path: '/metrics'
+        scrape_interval: 60s    # Less frequent for dev
+        
+      # Online Boutique metrics (minimal)
+      - job_name: 'online-boutique-frontend-dev'
+        static_configs:
+          - targets: ['frontend.online-boutique:80']
+        metrics_path: '/stats/prometheus'
+        scrape_interval: 60s
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: []  # No alerting in dev
+  
+  alert_rules.yml: |
+    groups:
+      - name: co2-assistant-dev
+        rules:
+          # Basic health checks only
+          - alert: ServiceDown
+            expr: up == 0
+            for: 5m
+            labels:
+              severity: warning
+              environment: dev
+            annotations:
+              summary: "Service {{ $labels.instance }} is down"

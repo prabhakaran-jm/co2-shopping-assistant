@@ -1,0 +1,98 @@
+# Production Monitoring - Comprehensive Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config-prod
+  namespace: co2-assistant
+  labels:
+    environment: prod
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s      # High frequency for production
+      evaluation_interval: 15s
+      external_labels:
+        environment: 'prod'
+        cluster: 'co2-assistant-cluster-prod'
+    
+    rule_files:
+      - "alert_rules.yml"
+      - "slo_rules.yml"
+    
+    scrape_configs:
+      # CO2 Assistant metrics (comprehensive)
+      - job_name: 'co2-assistant-prod'
+        static_configs:
+          - targets: ['co2-assistant-service:80']
+        metrics_path: '/metrics'
+        scrape_interval: 15s
+        
+      # Online Boutique metrics (all services)
+      - job_name: 'online-boutique-frontend-prod'
+        static_configs:
+          - targets: ['frontend.online-boutique:80']
+        metrics_path: '/stats/prometheus'
+        scrape_interval: 15s
+        
+      - job_name: 'online-boutique-services-prod'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - online-boutique
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: (cartservice|checkoutservice|paymentservice|productcatalogservice)
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
+  
+  alert_rules.yml: |
+    groups:
+      - name: co2-assistant-prod-sla
+        rules:
+          # Critical SLA alerts
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
+            for: 2m
+            labels:
+              severity: critical
+              environment: prod
+            annotations:
+              summary: "High error rate detected"
+              description: "Error rate is {{ $value | humanizePercentage }}"
+          
+          - alert: HighLatency
+            expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+            for: 2m
+            labels:
+              severity: warning
+              environment: prod
+            annotations:
+              summary: "High latency detected"
+              description: "95th percentile latency is {{ $value }}s"
+          
+          - alert: ServiceDown
+            expr: up == 0
+            for: 1m
+            labels:
+              severity: critical
+              environment: prod
+            annotations:
+              summary: "Service {{ $labels.instance }} is down"
+  
+  slo_rules.yml: |
+    groups:
+      - name: co2-assistant-slo
+        rules:
+          # SLO: 99.9% availability
+          - record: slo:availability_rate
+            expr: avg_over_time(up[1h])
+          
+          # SLO: 95% of requests < 500ms
+          - record: slo:latency_rate
+            expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[1h]))
