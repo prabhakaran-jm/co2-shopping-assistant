@@ -349,14 +349,19 @@ spec:
     - ob.cloudcarta.com
 EOF
 
-# Wait for certificate to be ready
+# Wait for certificate to be ready (with longer timeout)
 print_status "Waiting for certificate to be ready..."
-kubectl wait --for=condition=Ready --timeout=300s managedcertificate/co2-assistant-cert -n co2-assistant || print_warning "Certificate may take longer to provision"
+kubectl wait --for=condition=Ready --timeout=600s managedcertificate/co2-assistant-cert -n co2-assistant || print_warning "Certificate provisioning may take up to 15 minutes. Check status with: kubectl get managedcertificate -n co2-assistant"
 
 # Deploy unified ingress with custom domain
 print_status "Deploying unified ingress with custom domain..."
 kubectl apply -f k8s/managed-certificate.yaml
 kubectl apply -f k8s/https-ingress.yaml
+
+# Check final status (non-blocking)
+print_status "Checking deployment status..."
+kubectl get ingress https-ingress -n co2-assistant
+kubectl get managedcertificate co2-assistant-cert -n co2-assistant
 
 # No cleanup needed - using direct kubectl apply with sed
 
