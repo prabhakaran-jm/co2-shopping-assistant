@@ -152,7 +152,7 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Service unhealthy")
 
 
-@app.post("/chat")
+@app.post("/api/chat")
 async def chat_endpoint(request: Dict[str, Any]):
     """Main chat endpoint for user interactions."""
     try:
