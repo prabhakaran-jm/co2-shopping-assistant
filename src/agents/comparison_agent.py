@@ -153,6 +153,107 @@ class ComparisonAgent(BaseAgent):
         
         return response
     
+    async def process_message(self, message: str, session_id: str) -> Dict[str, Any]:
+        """
+        Process a user message and return a response.
+        
+        Args:
+            message: User message to process
+            session_id: Session identifier
+            
+        Returns:
+            Response dictionary
+        """
+        try:
+            logger.info(f"Processing comparison message: {message}")
+            
+            # Create request format expected by process_request
+            request = {
+                "message": message,
+                "context": {"session_id": session_id}
+            }
+            
+            # Process the request
+            response_text = await self.process_request(request)
+            
+            return {
+                "success": True,
+                "response": response_text,
+                "agent": self.name,
+                "session_id": session_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing comparison message: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "agent": self.name,
+                "session_id": session_id
+            }
+    
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a specific task assigned to this agent.
+        
+        Args:
+            task: Task dictionary containing task details
+            
+        Returns:
+            Task execution result
+        """
+        try:
+            logger.info(f"Executing comparison task: {task}")
+            
+            task_type = task.get("type", "compare_products")
+            parameters = task.get("parameters", {})
+            
+            if task_type == "compare_products":
+                # Extract comparison parameters
+                comparison_type = parameters.get("comparison_type", "eco_value")
+                products = parameters.get("products", [])
+                
+                if not products:
+                    # Get products from MCP server if not provided
+                    if self.comparison_mcp_server:
+                        products_result = await self.comparison_mcp_server.get_products_for_comparison(
+                            comparison_type="all",
+                            limit=10
+                        )
+                        products = products_result.get("products", [])
+                
+                if len(products) < 2:
+                    return {
+                        "success": False,
+                        "error": "Need at least 2 products to compare",
+                        "task_type": task_type
+                    }
+                
+                # Perform comparison
+                comparison_result = await self.compare_products(products, comparison_type)
+                
+                return {
+                    "success": True,
+                    "result": comparison_result,
+                    "task_type": task_type,
+                    "products_compared": len(products)
+                }
+            
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unknown task type: {task_type}",
+                    "task_type": task_type
+                }
+                
+        except Exception as e:
+            logger.error(f"Error executing comparison task: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "task_type": task.get("type", "unknown")
+            }
+    
     async def compare_products(
         self, 
         products: List[Dict[str, Any]], 
