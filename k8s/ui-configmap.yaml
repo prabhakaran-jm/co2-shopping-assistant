@@ -16,376 +16,7 @@ data:
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>CO2-Aware Shopping Assistant</title>
-        <style>
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                color: #333;
-            }
-
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-            }
-
-            .chat-header {
-                text-align: center;
-                background: rgba(255, 255, 255, 0.95);
-                padding: 30px;
-                border-radius: 15px;
-                margin-bottom: 20px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                backdrop-filter: blur(10px);
-            }
-
-            .eco-icon {
-                font-size: 3rem;
-                margin-bottom: 10px;
-            }
-
-            .chat-header h1 {
-                color: #2d5a27;
-                margin-bottom: 10px;
-                font-size: 2.5rem;
-            }
-
-            .chat-header p {
-                color: #666;
-                font-size: 1.1rem;
-                margin-bottom: 20px;
-            }
-
-            .co2-indicator {
-                background: linear-gradient(45deg, #4CAF50, #8BC34A);
-                color: white;
-                padding: 15px 25px;
-                border-radius: 25px;
-                display: inline-block;
-                font-weight: bold;
-                font-size: 1.1rem;
-                box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
-            }
-
-            .co2-icon {
-                margin-right: 10px;
-                font-size: 1.2rem;
-            }
-
-            .chat-container {
-                background: rgba(255, 255, 255, 0.95);
-                border-radius: 15px;
-                padding: 20px;
-                margin-bottom: 20px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                backdrop-filter: blur(10px);
-                height: 500px;
-                display: flex;
-                flex-direction: column;
-            }
-
-            .chat-messages {
-                flex: 1;
-                overflow-y: auto;
-                padding: 10px;
-                border: 1px solid #e0e0e0;
-                border-radius: 10px;
-                margin-bottom: 15px;
-                background: #f9f9f9;
-            }
-
-            .message {
-                margin-bottom: 15px;
-                padding: 12px 16px;
-                border-radius: 18px;
-                max-width: 80%;
-                word-wrap: break-word;
-            }
-
-            .message.user {
-                background: #007bff;
-                color: white;
-                margin-left: auto;
-                text-align: right;
-            }
-
-            .message.assistant {
-                background: #e9ecef;
-                color: #333;
-                margin-right: auto;
-            }
-
-            .chat-input-container {
-                display: flex;
-                gap: 10px;
-            }
-
-            #chat-input {
-                flex: 1;
-                padding: 12px 16px;
-                border: 2px solid #e0e0e0;
-                border-radius: 25px;
-                font-size: 1rem;
-                outline: none;
-                transition: border-color 0.3s;
-            }
-
-            #chat-input:focus {
-                border-color: #007bff;
-            }
-
-            #send-button {
-                padding: 12px 24px;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 25px;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: bold;
-                transition: background 0.3s;
-            }
-
-            #send-button:hover {
-                background: #0056b3;
-            }
-
-            #send-button:disabled {
-                background: #ccc;
-                cursor: not-allowed;
-            }
-
-            .features {
-                background: rgba(255, 255, 255, 0.95);
-                padding: 25px;
-                border-radius: 15px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                backdrop-filter: blur(10px);
-            }
-
-            .features h3 {
-                color: #2d5a27;
-                margin-bottom: 15px;
-                font-size: 1.5rem;
-            }
-
-            .features ul {
-                list-style: none;
-                padding: 0;
-            }
-
-            .features li {
-                padding: 8px 0;
-                color: #666;
-                font-size: 1.1rem;
-                position: relative;
-                padding-left: 25px;
-            }
-
-            .features li:before {
-                content: "✓";
-                position: absolute;
-                left: 0;
-                color: #4CAF50;
-                font-weight: bold;
-            }
-
-            /* Product card styling */
-            .product-list {
-                display: grid;
-                gap: 12px;
-                margin: 10px 0;
-            }
-
-            .product-card {
-                background: #f8f9fa;
-                border: 1px solid #e0e0e0;
-                border-radius: 12px;
-                padding: 16px;
-                margin: 8px 0;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-                display: flex;
-                gap: 16px;
-                align-items: flex-start;
-            }
-
-            .product-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            }
-
-            .product-image-container {
-                flex-shrink: 0;
-                width: 80px;
-                height: 80px;
-                border-radius: 8px;
-                overflow: hidden;
-                background: #fff;
-                border: 1px solid #e0e0e0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .product-image {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                border-radius: 8px;
-            }
-
-            .product-content {
-                flex: 1;
-                min-width: 0;
-            }
-
-            .product-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 8px;
-            }
-
-            .product-name {
-                color: #2d5a27;
-                font-size: 1.1rem;
-                font-weight: 600;
-                margin: 0;
-                flex: 1;
-                margin-right: 12px;
-            }
-
-            .product-price {
-                color: #007bff;
-                font-weight: bold;
-                font-size: 1.1rem;
-                white-space: nowrap;
-            }
-
-            .product-description {
-                color: #666;
-                font-size: 0.9rem;
-                line-height: 1.4;
-                margin: 8px 0;
-            }
-
-            .product-metrics {
-                display: flex;
-                gap: 16px;
-                flex-wrap: wrap;
-                margin-top: 12px;
-            }
-
-            .co2-impact, .eco-score {
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                padding: 4px 8px;
-                border-radius: 16px;
-                font-size: 0.85rem;
-                font-weight: 500;
-            }
-
-            .co2-impact {
-                background: #fff3cd;
-                color: #856404;
-                border: 1px solid #ffeaa7;
-            }
-
-            .eco-score {
-                background: #d4edda;
-                color: #155724;
-                border: 1px solid #c3e6cb;
-            }
-
-            /* Badge styling */
-            .co2-badge, .eco-badge {
-                display: inline-block;
-                padding: 2px 6px;
-                border-radius: 10px;
-                font-size: 0.7rem;
-                margin-left: 4px;
-            }
-
-            .co2-badge {
-                background: #ff6b6b;
-                color: white;
-            }
-
-            .eco-badge {
-                background: #4CAF50;
-                color: white;
-            }
-
-            /* Message content styling */
-            .message p {
-                margin: 8px 0;
-                line-height: 1.5;
-            }
-
-            .message strong {
-                color: #2d5a27;
-                font-weight: 600;
-            }
-
-            .message em {
-                color: #666;
-                font-style: italic;
-            }
-
-            /* Responsive design */
-            @media (max-width: 768px) {
-                .container {
-                    padding: 10px;
-                }
-                
-                .chat-header h1 {
-                    font-size: 2rem;
-                }
-                
-                .chat-container {
-                    height: 400px;
-                }
-                
-                .message {
-                    max-width: 90%;
-                }
-
-                .product-card {
-                    flex-direction: column;
-                    gap: 12px;
-                }
-
-                .product-image-container {
-                    width: 100%;
-                    height: 120px;
-                    align-self: center;
-                }
-
-                .product-header {
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 4px;
-                }
-
-                .product-name {
-                    margin-right: 0;
-                }
-
-                .product-metrics {
-                    flex-direction: column;
-                    gap: 8px;
-                }
-            }
-        </style>
+        <link rel="stylesheet" href="/style.css">
     </head>
     <body>
         <div class="container">
@@ -418,259 +49,312 @@ data:
             </div>
         </div>
 
-        <script>
-            class CO2ShoppingAssistant {
-                constructor() {
-                    this.chatInput = document.getElementById('chat-input');
-                    this.sendButton = document.getElementById('send-button');
-                    this.chatMessages = document.getElementById('chat-messages');
-                    this.co2SavingsElement = document.getElementById('co2-savings');
-                    this.totalCO2Saved = 0;
-                    
-                    this.initializeEventListeners();
-                    this.addWelcomeMessage();
-                }
-                
-                initializeEventListeners() {
-                    this.sendButton.addEventListener('click', () => this.sendMessage());
-                    this.chatInput.addEventListener('keypress', (e) => {
-                        if (e.key === 'Enter') {
-                            this.sendMessage();
-                        }
-                    });
-                }
-                
-                addWelcomeMessage() {
-                    const welcomeMessage = `
-                        Welcome to the CO2-Aware Shopping Assistant! 🌱<br><br>
-                        I can help you:<br>
-                        • Find products with lower carbon footprint<br>
-                        • Suggest sustainable alternatives<br>
-                        • Calculate CO2 savings<br>
-                        • Get eco-friendly recommendations<br><br>
-                        Try asking: "Show me eco-friendly products" or "What's the CO2 impact of this product?"
-                    `;
-                    this.addMessage('assistant', welcomeMessage);
-                }
-                
-                async sendMessage() {
-                    const message = this.chatInput.value.trim();
-                    if (!message) return;
-                    
-                    this.addMessage('user', message);
-                    this.chatInput.value = '';
-                    this.sendButton.disabled = true;
-                    
-                    try {
-                        const response = await this.callAPI(message);
-                        const messageText = response.response?.response || response.response || response;
-                        this.addMessage('assistant', messageText);
-                        this.extractAndUpdateCO2Savings(messageText);
-                    } catch (error) {
-                        this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-                        console.error('Error:', error);
-                    } finally {
-                        this.sendButton.disabled = false;
-                    }
-                }
-                
-                async callAPI(message) {
-                    const response = await fetch('/api/chat', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                        body: JSON.stringify({ message: message })
-                        });
-                        
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        
-                        const data = await response.json();
-                    return data.response || 'No response received';
-                }
-                
-                addMessage(sender, content) {
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = `message ${sender}`;
-                    
-                    // Format the content for better readability
-                    const formattedContent = this.formatMessageContent(content);
-                    messageDiv.innerHTML = formattedContent;
-                    
-                    this.chatMessages.appendChild(messageDiv);
-                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-                }
-                
-                formatMessageContent(content) {
-                    let formatted = content;
-                    
-                    // Format product listings
-                    formatted = this.formatProductListings(formatted);
-                    
-                    // Format markdown-like syntax
-                    formatted = formatted
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                        .replace(/\n\n/g, '</p><p>')
-                        .replace(/\n/g, '<br>');
-                    
-                    // Wrap in paragraph if not already wrapped
-                    if (!formatted.startsWith('<')) {
-                        formatted = `<p>${formatted}</p>`;
-                    }
-                    
-                    // Add CO2 badges for environmental impact mentions
-                    formatted = formatted.replace(
-                        /(\d+\.?\d*)\s*kg\s*CO[₂2]/g, 
-                        '$1 kg CO₂ <span class="co2-badge">🌍</span>'
-                    );
-                    
-                    // Add eco badges for eco-friendly mentions
-                    formatted = formatted.replace(
-                        /(eco-friendly|sustainable|green|environmental)/gi, 
-                        '$1<span class="eco-badge">🌱</span>'
-                    );
-                    
-                    return formatted;
-                }
-                
-                formatProductListings(content) {
-                    try {
-                        // First try to parse as direct JSON
-                        let data = JSON.parse(content);
-                        
-                        // If it's nested in response.response, extract it
-                        if (data && data.response && typeof data.response === 'string') {
-                            try {
-                                data = JSON.parse(data.response);
-                            } catch (e) {
-                                // If nested response is not JSON, fall back to text parsing
-                                return this.formatTextProductListings(data.response);
-                            }
-                        }
-                        
-                        if (data && data.products && Array.isArray(data.products)) {
-                            if (data.products.length === 0) {
-                                return `<p>${data.message}</p>`;
-                            }
-                            let productCards = '<div class="product-list">';
-                            data.products.forEach(product => {
-                                productCards += this.createProductCard(product);
-                            });
-                            productCards += '</div>';
-                            return `<p>${data.message}</p>${productCards}`;
-                        }
-                    } catch (e) {
-                        // Not a JSON string, do nothing
-                    }
-                    
-                    // Fallback to text parsing if JSON parsing fails
-                    return this.formatTextProductListings(content);
-                }
-                
-                formatTextProductListings(content) {
-                    // Handle the old text format as fallback
-                    const productRegex = /(\d+)\.\s*\*\*(.*?)\*\*\s*\((\$[\d.]+)\)\s*\n\s*•\s*CO2 Impact:\s*([^\n]+)\s*\n\s*•\s*Eco Score:\s*([^\n]+)\s*\n\s*•\s*(.+?)(?=\n\n|\n\d+\.|$)/gs;
-                    const matches = content.matchAll(productRegex);
-                    const products = Array.from(matches);
-                    
-                    if (products.length > 0) {
-                        let productCards = '<div class="product-list">';
-                        products.forEach(match => {
-                            const [, , name, price, co2Impact, ecoScore, description] = match;
-                            // Construct image URL based on product name
-                            const imageUrl = this.getProductImageUrl(name.trim());
-                            const product = {
-                                name: name.trim(),
-                                price: this.formatPrice(price.trim()),
-                                co2_emissions: co2Impact.trim(),
-                                eco_score: ecoScore.trim(),
-                                description: description.trim(),
-                                image_url: imageUrl
-                            };
-                            productCards += this.createProductCard(product);
-                        });
-                        productCards += '</div>';
-                        return productCards;
-                    }
-                    
-                    return `<p>${content}</p>`;
-                }
-                
-                getProductImageUrl(productName) {
-                    // Map product names to image URLs from Online Boutique
-                    const imageMap = {
-                        'sunglasses': 'https://ob.cloudcarta.com/static/img/products/sunglasses.jpg',
-                        'tank top': 'https://ob.cloudcarta.com/static/img/products/tank-top.jpg',
-                        'watch': 'https://ob.cloudcarta.com/static/img/products/watch.jpg',
-                        'loafers': 'https://ob.cloudcarta.com/static/img/products/loafers.jpg',
-                        'hairdryer': 'https://ob.cloudcarta.com/static/img/products/hairdryer.jpg',
-                        'shoes': 'https://ob.cloudcarta.com/static/img/products/shoes.jpg',
-                        'electronics': 'https://ob.cloudcarta.com/static/img/products/electronics.jpg',
-                        'clothing': 'https://ob.cloudcarta.com/static/img/products/clothing.jpg'
-                    };
-                    
-                    const normalizedName = productName.toLowerCase();
-                    return imageMap[normalizedName] || 'https://ob.cloudcarta.com/static/img/products/default.jpg';
-                }
-                
-                formatPrice(priceStr) {
-                    // Clean and format price string
-                    const cleaned = priceStr.replace(/[^\d.]/g, '');
-                    const num = parseFloat(cleaned);
-                    return isNaN(num) ? priceStr : `$${num.toFixed(2)}`;
-                }
-                
-                createProductCard(product) {
-                    const imageUrl = product.image_url;
-                    
-                    return `
-                        <div class="product-card">
-                            <div class="product-image-container">
-                                <img src="${imageUrl}" alt="${product.name}" class="product-image" 
-                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjRjhGOUZBIi8+CjxwYXRoIGQ9Ik00MCAyMEMyOS4wMzEgMjAgMjAgMjkuMDMxIDIwIDQwQzIwIDUwLjk2OSAyOS4wMzEgNjAgNDAgNjBDNTAuOTY5IDYwIDYwIDUwLjk2OSA2MCA0MEM2MCAyOS4wMzEgNTAuOTY5IDIwIDQwIDIwWiIgZmlsbD0iI0QxRDVESCIvPgo8cGF0aCBkPSJNNDAgMzVWNDVINDUiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+'">
-                            </div>
-                            <div class="product-content">
-                                <div class="product-header">
-                                    <h4 class="product-name">${product.name}</h4>
-                                    <span class="product-price">${product.price}</span>
-                                </div>
-                                ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
-                                <div class="product-metrics">
-                                    ${product.co2_emissions ? `<span class="co2-impact">🌍 ${product.co2_emissions}</span>` : ''}
-                                    ${product.eco_score ? `<span class="eco-score">🌱 ${product.eco_score}</span>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                extractAndUpdateCO2Savings(response) {
-                    const co2Match = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]/i);
-                    if (co2Match) {
-                        const co2Amount = parseFloat(co2Match[1]);
-                        this.totalCO2Saved += co2Amount;
-                        this.updateCO2Display();
-                    }
-                }
-                
-                updateCO2Display() {
-                    if (this.co2SavingsElement) {
-                        this.co2SavingsElement.textContent = `${this.totalCO2Saved.toFixed(1)} kg CO₂ saved`;
-                        this.co2SavingsElement.style.transform = 'scale(1.1)';
-                        setTimeout(() => {
-                            this.co2SavingsElement.style.transform = 'scale(1)';
-                        }, 200);
-                    }
-                }
-            }
-            
-            // Initialize the assistant when the page loads
-            document.addEventListener('DOMContentLoaded', () => {
-                new CO2ShoppingAssistant();
-            });
-        </script>
+        <script src="/script.js"></script>
     </body>
     </html>
+  
+  style.css: |
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .chat-header {
+        text-align: center;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+    .eco-icon {
+        font-size: 3rem;
+        margin-bottom: 10px;
+    }
+
+    .chat-header h1 {
+        color: #2d5a27;
+        margin-bottom: 10px;
+        font-size: 2.5rem;
+    }
+
+    .chat-header p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 20px;
+    }
+
+    .co2-indicator {
+        background: linear-gradient(45deg, #4CAF50, #8BC34A);
+        color: white;
+        padding: 15px 25px;
+        border-radius: 25px;
+        display: inline-block;
+        font-weight: bold;
+        font-size: 1.1rem;
+        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+    }
+
+    .co2-icon {
+        margin-right: 10px;
+        font-size: 1.2rem;
+    }
+
+    .chat-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        height: 500px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        background: #f9f9f9;
+    }
+
+    .message {
+        margin-bottom: 15px;
+        padding: 12px 16px;
+        border-radius: 18px;
+        max-width: 80%;
+        word-wrap: break-word;
+    }
+
+    .message.user {
+        background: #007bff;
+        color: white;
+        margin-left: auto;
+        text-align: right;
+    }
+
+    .message.assistant {
+        background: #e9ecef;
+        color: #333;
+        margin-right: auto;
+    }
+
+    .chat-input-container {
+        display: flex;
+        gap: 10px;
+    }
+
+    #chat-input {
+        flex: 1;
+        padding: 12px 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 25px;
+        font-size: 1rem;
+        outline: none;
+        transition: border-color 0.3s;
+    }
+
+    #chat-input:focus {
+        border-color: #007bff;
+    }
+
+    #send-button {
+        padding: 12px 24px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: bold;
+        transition: background 0.3s;
+    }
+
+    #send-button:hover {
+        background: #0056b3;
+    }
+
+    #send-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+
+    .features {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+    .features h3 {
+        color: #2d5a27;
+        margin-bottom: 15px;
+        font-size: 1.5rem;
+    }
+
+    .features ul {
+        list-style: none;
+        padding: 0;
+    }
+
+    .features li {
+        padding: 8px 0;
+        color: #666;
+        font-size: 1.1rem;
+        position: relative;
+        padding-left: 25px;
+    }
+
+    .features li:before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #4CAF50;
+        font-weight: bold;
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .container {
+            padding: 10px;
+        }
+        
+        .chat-header h1 {
+            font-size: 2rem;
+        }
+        
+        .chat-container {
+            height: 400px;
+        }
+        
+        .message {
+            max-width: 90%;
+        }
+    }
+
+  script.js: |
+    class CO2ShoppingAssistant {
+        constructor() {
+            this.chatInput = document.getElementById('chat-input');
+            this.sendButton = document.getElementById('send-button');
+            this.chatMessages = document.getElementById('chat-messages');
+            this.co2SavingsElement = document.getElementById('co2-savings');
+            this.totalCO2Saved = 0;
+            
+            this.initializeEventListeners();
+            this.addWelcomeMessage();
+        }
+        
+        initializeEventListeners() {
+            this.sendButton.addEventListener('click', () => this.sendMessage());
+            this.chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendMessage();
+                }
+            });
+        }
+        
+        addWelcomeMessage() {
+            const welcomeMessage = `
+                Welcome to the CO2-Aware Shopping Assistant! 🌱<br><br>
+                I can help you:<br>
+                • Find products with lower carbon footprint<br>
+                • Suggest sustainable alternatives<br>
+                • Calculate CO2 savings<br>
+                • Get eco-friendly recommendations<br><br>
+                Try asking: "Show me eco-friendly products" or "What's the CO2 impact of this product?"
+            `;
+            this.addMessage('assistant', welcomeMessage);
+        }
+        
+        async sendMessage() {
+            const message = this.chatInput.value.trim();
+            if (!message) return;
+            
+            this.addMessage('user', message);
+            this.chatInput.value = '';
+            this.sendButton.disabled = true;
+            
+            try {
+                const response = await this.callAPI(message);
+                const messageText = response.response?.response || response.response || response;
+                this.addMessage('assistant', messageText);
+                this.extractAndUpdateCO2Savings(messageText);
+            } catch (error) {
+                this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+                console.error('Error:', error);
+            } finally {
+                this.sendButton.disabled = false;
+            }
+        }
+        
+        async callAPI(message) {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return data.response || 'No response received';
+        }
+        
+        addMessage(sender, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.innerHTML = content;
+            this.chatMessages.appendChild(messageDiv);
+            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+        }
+        
+        extractAndUpdateCO2Savings(response) {
+            const co2Match = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]/i);
+            if (co2Match) {
+                const co2Amount = parseFloat(co2Match[1]);
+                this.totalCO2Saved += co2Amount;
+                this.updateCO2Display();
+            }
+        }
+        
+        updateCO2Display() {
+            if (this.co2SavingsElement) {
+                this.co2SavingsElement.textContent = `${this.totalCO2Saved.toFixed(1)} kg CO₂ saved`;
+                this.co2SavingsElement.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    this.co2SavingsElement.style.transform = 'scale(1)';
+                }, 200);
+            }
+        }
+    }
+    
+    // Initialize the assistant when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        new CO2ShoppingAssistant();
+    });

@@ -7,7 +7,7 @@ metadata:
     app: co2-assistant
     version: v1
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: co2-assistant
