@@ -32,3 +32,8 @@ pytest-json-report>=1.5.0  # JSON test reports
 # Code quality
 pytest-flake8>=1.1.0
 pytest-mypy>=0.10.0
+
+# UI Testing (Node.js dependencies)
+# Note: UI tests require Node.js and npm
+# Install with: cd tests/ui && npm install
+# Dependencies: jest, jsdom

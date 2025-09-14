@@ -16,6 +16,13 @@ tests/
 │   └── test_api_endpoints.py # API endpoint testing
 ├── e2e/                     # End-to-end tests
 │   └── test_user_journey.py # Complete user workflows
+├── ui/                      # Frontend UI tests
+│   ├── test-ui.html        # Interactive HTML test page
+│   ├── test-ui.js          # Automated Jest tests
+│   ├── package.json        # Node.js dependencies
+│   ├── jest.setup.js       # Jest configuration
+│   ├── run-tests.sh        # UI test runner script
+│   └── README.md           # UI tests documentation
 ├── fixtures/                # Test data and mocks
 │   └── sample_data.json    # Sample test data
 ├── conftest.py             # Pytest configuration and fixtures
@@ -42,12 +49,21 @@ tests/
 - **Mocking**: Minimal mocking, realistic scenarios
 - **Speed**: Slower execution (5-30 seconds per test)
 
+### **UI Tests** (`tests/ui/`)
+- **Purpose**: Test frontend functionality and user interface
+- **Coverage**: Product display, CO2 analysis, user interactions
+- **Tools**: Jest (JavaScript), HTML test page (manual)
+- **Speed**: Fast execution (< 1 second per test)
+
 ## 🚀 **Running Tests**
 
 ### **Prerequisites**
 ```bash
-# Install test dependencies
+# Install Python test dependencies
 pip install -r requirements-test.txt
+
+# Install UI test dependencies (requires Node.js)
+cd tests/ui && npm install
 ```
 
 ### **Basic Test Execution**
@@ -65,6 +81,12 @@ pytest tests/unit/test_agents.py
 
 # Run specific test function
 pytest tests/unit/test_agents.py::TestHostAgent::test_host_agent_initialization
+
+# Run UI tests
+cd tests/ui && ./run-tests.sh --test
+
+# Open interactive UI test page
+cd tests/ui && ./run-tests.sh --html
 ```
 
 ### **Using the Test Runner Script**

@@ -396,3 +396,41 @@ $RECYCLE.BIN/
 # Project specific ignores
 # Add any project-specific files or directories here
 terraform/envs/*.tfvars
+
+# UI Testing (Node.js/Jest)
+tests/ui/node_modules/
+tests/ui/package-lock.json
+tests/ui/reports/
+tests/ui/coverage/
+tests/ui/.nyc_output/
+tests/ui/jest-cache/
+tests/ui/.jest-cache/
+
+# UI Test artifacts
+tests/ui/test-report.html
+tests/ui/test-report.json
+tests/ui/junit.xml
+tests/ui/test-results.xml
+
+# UI Test temporary files
+tests/ui/tmp/
+tests/ui/temp/
+tests/ui/*.tmp
+tests/ui/*.temp
+
+# UI Test screenshots and videos (if added later)
+tests/ui/screenshots/
+tests/ui/videos/
+tests/ui/test-results/
+
+# UI Test environment files
+tests/ui/.env
+tests/ui/.env.local
+tests/ui/.env.test
+tests/ui/.env.production
+
+# UI Test configuration overrides
+tests/ui/jest.config.local.js
+tests/ui/jest.config.override.js
+tests/ui/.eslintrc.local.js
+tests/ui/.prettierrc.local.js

@@ -541,25 +541,13 @@ What would you like to explore? I'll make sure to highlight the environmental be
         }
     
     def _format_product_search_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
-        """Format product search results into a JSON string for the frontend."""
+        """Format product search results into a user-friendly text response."""
         if not products:
-            return json.dumps({
-                "products": [],
-                "message": "I couldn't find any products matching your criteria. Try adjusting your search terms."
-            })
+            return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
-        image_base_url = "/ob-images"
+        response = f"🌱 **Found {len(products)} eco-friendly products for you!**\n\n"
         
-        formatted_products = []
-        for product in products:  # Process all products
-            picture_path = product.get('picture')
-            image_url = ""
-            if picture_path:
-                if picture_path.startswith('/'):
-                    image_url = f"{image_base_url}{picture_path}"
-                else:
-                    image_url = f"{image_base_url}/{picture_path}"
-
+        for i, product in enumerate(products, 1):
             # Handle price formatting - extract from price_usd structure
             price_value = 0.0
             if 'price_usd' in product:
@@ -578,21 +566,18 @@ What would you like to explore? I'll make sure to highlight the environmental be
                     except (ValueError, TypeError):
                         price_value = 0.0
             
-            formatted_products.append({
-                "name": product.get("name", "N/A"),
-                "price": f"${price_value:.2f}",
-                "co2_emissions": f"{product.get('co2_emissions', 0.0):.1f}kg ({product.get('co2_rating', 'N/A')})",
-                "eco_score": f"{product.get('eco_score', 'N/A')}/10",
-                "description": product.get("description", ""),
-                "image_url": image_url
-            })
-
-        response_data = {
-            "products": formatted_products,
-            "message": f"🌱 Found {len(products)} eco-friendly products for you. Here they are:"
-        }
+            # Format CO2 emissions
+            co2_emissions = product.get('co2_emissions', 0.0)
+            co2_rating = product.get('co2_rating', 'Medium')
+            
+            response += f"**{i}. {product.get('name', 'N/A')}** - ${price_value:.2f}\n"
+            response += f"   🌍 **CO2 Impact:** {co2_emissions:.1f}kg ({co2_rating})\n"
+            response += f"   ⭐ **Eco Score:** {product.get('eco_score', 'N/A')}/10\n"
+            response += f"   📝 **Description:** {product.get('description', 'No description available')}\n\n"
         
-        return json.dumps(response_data)
+        response += "💡 **Tip:** All these products are selected for their environmental friendliness. Would you like to know more about any specific product or add any to your cart?"
+        
+        return response
     
     def _format_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
         """Format recommendation results."""
