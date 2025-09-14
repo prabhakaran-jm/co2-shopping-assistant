@@ -541,7 +541,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
         }
     
     def _format_product_search_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
-        """Format product search results into a user-friendly catalog-style response."""
+        """Format product search results into a user-friendly catalog-style response with images."""
         if not products:
             return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
@@ -590,7 +590,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
             
             # Add image if available
             if image_url:
-                response += f"🖼️ **Image:** {image_url}\n"
+                response += f"![{product.get('name', 'Product')}]({image_url})\n"
             
             response += "-" * 40 + "\n\n"
         
