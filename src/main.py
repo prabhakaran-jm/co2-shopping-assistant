@@ -49,7 +49,14 @@ structlog.configure(
 
 logger = structlog.get_logger(__name__)
 
-# Prometheus metrics
+# Prometheus metrics - Clear registry to avoid duplicate registration issues
+from prometheus_client import REGISTRY, CollectorRegistry
+
+# Clear any existing metrics to prevent duplicate registration
+# Remove all collectors from the default registry
+for collector in list(REGISTRY._collector_to_names.keys()):
+    REGISTRY.unregister(collector)
+
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
 REQUEST_DURATION = Histogram('http_request_duration_seconds', 'HTTP request duration', ['method', 'endpoint'])
 ACTIVE_CONNECTIONS = Gauge('active_connections', 'Number of active connections')
@@ -237,8 +244,8 @@ async def get_agent_status(agent_name: str):
     }
 
 
-@app.get("/metrics")
-async def get_metrics():
+@app.get("/api/metrics")
+async def get_system_metrics():
     """Get system metrics for monitoring."""
     metrics = {}
     
@@ -262,10 +269,12 @@ if __name__ == "__main__":
     
     # Run the application
     port = int(os.getenv("HOST_AGENT_PORT", 8000))
+    # Disable reload in production to prevent metric registration issues
+    reload = os.getenv("ENVIRONMENT", "dev").lower() == "dev"
     uvicorn.run(
         "src.main:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
+        reload=reload,
         log_level=log_level.lower()
     )
