@@ -310,27 +310,36 @@ class ComparisonAgent(BaseAgent):
             try:
                 # Extract and validate required fields
                 name = product.get('name', 'Unknown Product')
-                price_str = product.get('price', '$0')
-                co2_str = product.get('co2_emissions', '0kg')
-                eco_score_str = product.get('eco_score', '0/10')
                 
-                # Parse price (remove $ and convert to float)
-                price = float(price_str.replace('$', '').replace(',', ''))
+                # Handle price formatting - extract from price_usd structure (from boutique MCP)
+                price_value = 0.0
+                if 'price_usd' in product:
+                    price_usd = product['price_usd']
+                    if isinstance(price_usd, dict):
+                        units = price_usd.get('units', 0)
+                        nanos = price_usd.get('nanos', 0)
+                        price_value = units + (nanos / 1e9)
+                    else:
+                        price_value = float(price_usd) if price_usd else 0.0
+                elif 'price' in product:
+                    price_str = product.get('price', '$0')
+                    price_value = float(price_str.replace('$', '').replace(',', ''))
                 
-                # Parse CO2 emissions (extract number from string like "49.0kg (Medium)")
-                co2_match = co2_str.split('kg')[0] if 'kg' in co2_str else '0'
-                co2_emissions = float(co2_match)
+                # Mock CO2 data based on product type and price (same logic as ProductDiscoveryAgent)
+                base_co2 = 50.0  # Base CO2 in kg
+                eco_factor = max(0.1, min(1.0, (1000 - price_value) / 1000))
+                co2_emissions = base_co2 * eco_factor
                 
-                # Parse eco score (extract number from string like "9/10")
-                eco_score = float(eco_score_str.split('/')[0]) if '/' in eco_score_str else 0
+                # Mock eco score based on price (lower price = higher eco score)
+                eco_score = max(1, min(10, int(10 - (price_value / 20))))
                 
                 validated_product = {
                     'name': name,
-                    'price': price,
+                    'price': price_value,
                     'co2_emissions': co2_emissions,
                     'eco_score': eco_score,
                     'description': product.get('description', ''),
-                    'image_url': product.get('image_url', ''),
+                    'image_url': product.get('picture', ''),
                     'original_data': product
                 }
                 

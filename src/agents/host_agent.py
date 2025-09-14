@@ -225,7 +225,8 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "ranking", "top", "which is", "difference", "analyze", "analysis",
             "eco-value", "co2 efficiency", "price optimization", "comprehensive",
             "show me the best", "find the best", "which are the best", "most efficient",
-            "highest eco", "lowest co2", "best value", "compare by", "rank by"
+            "highest eco", "lowest co2", "best value", "compare by", "rank by",
+            "which are", "most", "efficient", "environmental impact", "sustainability"
         ]
         
         # Calculate confidence scores
