@@ -13,6 +13,8 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import json
 
+from .base_agent import BaseAgent
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -23,10 +25,15 @@ class ComparisonCriteria:
     price_weight: float = 0.2  # Price optimization
     eco_score_weight: float = 0.1  # Raw eco-score
 
-class ComparisonAgent:
+class ComparisonAgent(BaseAgent):
     """Intelligent product comparison agent"""
     
     def __init__(self, comparison_mcp_server=None):
+        super().__init__(
+            name="ComparisonAgent",
+            description="Intelligent product comparison agent with multi-criteria analysis",
+            instruction="You are an intelligent product comparison agent that analyzes products using multiple criteria including eco-value, CO2 efficiency, price optimization, and comprehensive analysis."
+        )
         self.criteria = ComparisonCriteria()
         self.comparison_mcp_server = comparison_mcp_server
         logger.info("ComparisonAgent initialized")
