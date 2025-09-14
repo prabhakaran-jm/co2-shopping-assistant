@@ -41,7 +41,14 @@ Before running Terraform, you need to set up your configuration files:
    - `bucket`: Your GCS bucket name for Terraform state
    - `prefix`: Path prefix for your state files
 
+4. **Optional: Environment-specific configurations** (in `envs/` folder):
+   - `dev.tfvars`: Development environment settings (minimal security)
+   - `prod.tfvars`: Production environment settings (full security)
+   - These are used during application deployment, not infrastructure creation
+
 > **Note**: `backend.hcl` and `terraform.tfvars` are in `.gitignore` and will not be committed to the repository. This ensures your specific configuration remains private.
+
+> **Important**: Infrastructure is shared across environments. Environment-specific configurations are applied during application deployment, not infrastructure creation.
 
 ## Quick Start
 
@@ -79,10 +86,16 @@ terraform apply
 ### 4. Deploy applications
 
 ```bash
-# Use the automated deployment script
-../scripts/deploy.sh \
+# Deploy with default (development) settings
+../scripts/deploy-app.sh \
   --project-id YOUR_PROJECT_ID \
   --gemini-api-key YOUR_API_KEY
+
+# Deploy with production settings (uses terraform/envs/prod.tfvars)
+../scripts/deploy-app.sh \
+  --project-id YOUR_PROJECT_ID \
+  --gemini-api-key YOUR_API_KEY \
+  --environment prod
 ```
 
 ## Manual Deployment Steps
@@ -137,7 +150,7 @@ kubectl create secret generic co2-assistant-secrets \
 
 ## Configuration
 
-### Variables
+### Infrastructure Variables (terraform.tfvars)
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -148,8 +161,93 @@ kubectl create secret generic co2-assistant-secrets \
 | `online_boutique_namespace` | Online Boutique Namespace | `default` | No |
 | `artifact_registry_repo_name` | Artifact Registry Repository | `co2-assistant-repo` | No |
 | `deletion_protection` | Enable Deletion Protection | `false` | No |
-| `enable_network_policy` | Enable Network Policies | `true` | No |
-| `enable_managed_prometheus` | Enable Managed Prometheus | `true` | No |
+
+### Environment-Specific Variables (envs/*.tfvars)
+
+**Current Usage (Application-Level Only):**
+These variables are applied during application deployment, not infrastructure creation:
+
+| Variable | Description | Dev Default | Prod Default |
+|----------|-------------|-------------|--------------|
+| `enable_network_policy` | Enable Network Policies | `false` | `true` |
+| `enable_managed_prometheus` | Enable Managed Prometheus | `true` | `true` |
+| `enable_managed_cni` | Enable Managed CNI | `true` | `true` |
+| `environment` | Environment Name | `dev` | `prod` |
+| `labels` | Resource Labels | Development labels | Production labels |
+
+**Environment Files:**
+- `envs/dev.tfvars`: Development settings (minimal security, cost-optimized)
+- `envs/prod.tfvars`: Production settings (full security, compliance-ready)
+
+### Future: Environment-Specific Infrastructure
+
+**For Separate Infrastructure per Environment:**
+
+To create separate clusters/projects per environment, uncomment the infrastructure variables in the environment files:
+
+**Development Infrastructure (`envs/dev.tfvars`):**
+```hcl
+# Uncomment these for separate dev infrastructure:
+project_id = "my-dev-project"
+cluster_name = "co2-assistant-dev-cluster"
+release_channel = "REGULAR"
+deletion_protection = false
+```
+
+**Production Infrastructure (`envs/prod.tfvars`):**
+```hcl
+# Uncomment these for separate prod infrastructure:
+project_id = "my-prod-project"
+cluster_name = "co2-assistant-prod-cluster"
+release_channel = "STABLE"
+deletion_protection = true
+```
+
+**Benefits of Separate Infrastructure:**
+- Complete isolation between environments
+- Different GCP projects for dev/prod
+- Independent scaling and resource management
+- Enhanced security boundaries
+
+**Considerations:**
+- Higher costs (multiple clusters)
+- Separate Terraform state management required
+- More complex CI/CD pipeline setup
+
+### Backend Configuration for Separate Infrastructure
+
+When using separate infrastructure per environment, you'll need separate backend configurations:
+
+**Create `terraform/backend-dev.hcl`:**
+```hcl
+bucket = "my-terraform-state-bucket"
+prefix = "co2-shopping-assistant/dev"
+```
+
+**Create `terraform/backend-prod.hcl`:**
+```hcl
+bucket = "my-terraform-state-bucket"
+prefix = "co2-shopping-assistant/prod"
+```
+
+**Usage with separate backends:**
+```bash
+# Initialize with dev backend
+terraform init -backend-config=backend-dev.hcl
+
+# Initialize with prod backend  
+terraform init -backend-config=backend-prod.hcl
+```
+
+**Automatic Backend Selection:**
+The deployment scripts automatically select the appropriate backend configuration:
+
+- **Default**: Uses `backend.hcl` (shared infrastructure)
+- **With environment**: Uses `backend-ENV.hcl` if it exists, otherwise falls back to `backend.hcl`
+- **Examples**:
+  - `--environment dev` → uses `backend-dev.hcl` (if exists)
+  - `--environment prod` → uses `backend-prod.hcl` (if exists)
+  - No environment → uses `backend.hcl`
 
 ### Backend Configuration
 
@@ -264,12 +362,84 @@ This Terraform configuration is designed to integrate with existing infrastructu
 - **CI/CD Integration**: Compatible with existing deployment pipelines
 - **Monitoring Integration**: Leverages existing monitoring setup
 
+## Deployment Workflow
+
+### Current: Shared Infrastructure + Environment-Specific Applications
+```bash
+# Deploy shared infrastructure (cluster, registry, service accounts)
+./scripts/deploy-infra.sh --project-id YOUR_PROJECT_ID
+
+# Deploy applications with environment-specific configurations
+./scripts/deploy-app.sh \
+  --project-id YOUR_PROJECT_ID \
+  --gemini-api-key YOUR_API_KEY \
+  --environment dev
+
+./scripts/deploy-app.sh \
+  --project-id YOUR_PROJECT_ID \
+  --gemini-api-key YOUR_API_KEY \
+  --environment prod
+```
+
+### Future: Separate Infrastructure per Environment
+```bash
+# Deploy separate development infrastructure
+./scripts/deploy-infra.sh --project-id my-dev-project --environment dev
+
+# Deploy separate production infrastructure  
+./scripts/deploy-infra.sh --project-id my-prod-project --environment prod
+
+# Deploy applications to respective environments
+./scripts/deploy-app.sh \
+  --project-id my-dev-project \
+  --gemini-api-key YOUR_API_KEY \
+  --environment dev
+
+./scripts/deploy-app.sh \
+  --project-id my-prod-project \
+  --gemini-api-key YOUR_API_KEY \
+  --environment prod
+```
+
+### Environment-Specific Features
+
+**Development (`dev`):**
+- Minimal network policies (faster development)
+- Basic monitoring
+- Cost-optimized resource allocation
+- Development-friendly labels
+
+**Production (`prod`):**
+- Full network policy enforcement
+- Comprehensive monitoring and alerting
+- Production-grade security policies
+- Compliance-ready labels and configurations
+
+## Migration Path
+
+When you're ready to move to separate infrastructure:
+
+1. **Uncomment the infrastructure variables** in `envs/dev.tfvars` and `envs/prod.tfvars`
+2. **Create separate backend configurations:**
+   - `terraform/backend-dev.hcl` (for dev state)
+   - `terraform/backend-prod.hcl` (for prod state)
+3. **Deploy separate infrastructure** for each environment:
+   ```bash
+   # Deploy dev infrastructure (automatically uses backend-dev.hcl)
+   ./scripts/deploy-infra.sh --project-id my-dev-project --environment dev
+   
+   # Deploy prod infrastructure (automatically uses backend-prod.hcl)
+   ./scripts/deploy-infra.sh --project-id my-prod-project --environment prod
+   ```
+
+**Note:** The deployment scripts automatically detect and use environment-specific backend configurations. No script modifications needed!
+
 ## Next Steps
 
 After infrastructure deployment:
 
-1. **Deploy Applications**: Use the deployment scripts
-2. **Configure Monitoring**: Set up dashboards and alerts
+1. **Deploy Applications**: Use the deployment scripts with appropriate environment
+2. **Configure Monitoring**: Set up dashboards and alerts (environment-specific)
 3. **Test Integration**: Verify Online Boutique and CO2 Assistant communication
 4. **Performance Tuning**: Optimize based on usage patterns
 5. **Security Review**: Audit IAM roles and network policies

@@ -18,6 +18,8 @@ show_usage() {
     echo "Teardown CO2 Assistant and Online Boutique applications"
     echo ""
     echo "Options:"
+    echo "  --environment ENV         Environment: dev or prod (default: dev)"
+    echo "                             Removes environment-specific resources"
     echo "  --force                   Skip confirmation prompts"
     echo "  --keep-certificates       Keep managed certificates (DEFAULT: preserved)"
     echo "  --delete-certificates     Delete managed certificates (DANGEROUS)"
@@ -25,9 +27,14 @@ show_usage() {
     echo "  --dry-run                 Show what would be deleted without actually deleting"
     echo "  --help                    Show this help message"
     echo ""
+    echo "Environment-specific cleanup:"
+    echo "  dev:  Removes development-specific monitoring and security policies"
+    echo "  prod: Removes production-grade security policies and monitoring"
+    echo ""
     echo "Examples:"
     echo "  $0                        # Interactive teardown (certificates preserved)"
     echo "  $0 --force                # Force teardown without prompts (certificates preserved)"
+    echo "  $0 --environment prod      # Remove production-specific resources"
     echo "  $0 --delete-certificates  # DANGEROUS: Delete certificates (takes 15-30 min to recreate)"
     echo "  $0 --dry-run              # Show what would be deleted"
     echo ""
@@ -37,6 +44,7 @@ show_usage() {
 }
 
 # Default values
+ENVIRONMENT="dev"
 FORCE_TEARDOWN=false
 KEEP_CERTIFICATES=true  # Changed default to preserve certificates
 KEEP_INGRESS=false
@@ -45,6 +53,10 @@ DRY_RUN=false
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --environment)
+            ENVIRONMENT="$2"
+            shift 2
+            ;;
         --force)
             FORCE_TEARDOWN=true
             shift
@@ -217,6 +229,53 @@ teardown_applications() {
         log_success "CO2 Assistant resources cleaned up"
     else
         log_info "CO2 Assistant namespace not found"
+    fi
+    
+    # Clean up environment-specific resources
+    log_info "Cleaning up environment-specific resources for $ENVIRONMENT..."
+    
+    # Load environment-specific configuration if available
+    local env_config_file="terraform/envs/${ENVIRONMENT}.tfvars"
+    local enable_network_policy="false"
+    local enable_managed_prometheus="true"
+    
+    if [[ -f "$env_config_file" ]]; then
+        log_info "Loading environment configuration from $env_config_file"
+        enable_network_policy=$(grep "enable_network_policy" "$env_config_file" | cut -d'=' -f2 | tr -d ' ' || echo "false")
+        enable_managed_prometheus=$(grep "enable_managed_prometheus" "$env_config_file" | cut -d'=' -f2 | tr -d ' ' || echo "true")
+    fi
+    
+    # Remove environment-specific network policies
+    if [[ "$enable_network_policy" == "true" ]]; then
+        log_info "Removing environment-specific network policies..."
+        if [[ "$DRY_RUN" == "true" ]]; then
+            kubectl get networkpolicy -l environment="$ENVIRONMENT" --all-namespaces 2>/dev/null || log_warning "No environment-specific network policies found"
+        else
+            kubectl delete networkpolicy -l environment="$ENVIRONMENT" --all-namespaces --ignore-not-found=true
+            if [[ -f "security/network-policy-${ENVIRONMENT}.yaml" ]]; then
+                kubectl delete -f "security/network-policy-${ENVIRONMENT}.yaml" --ignore-not-found=true
+            fi
+            log_success "Environment-specific network policies removed"
+        fi
+    else
+        log_info "Skipping network policy cleanup (disabled in $ENVIRONMENT configuration)"
+    fi
+    
+    # Remove environment-specific monitoring
+    if [[ "$enable_managed_prometheus" == "true" ]]; then
+        log_info "Removing environment-specific monitoring..."
+        if [[ "$DRY_RUN" == "true" ]]; then
+            kubectl get prometheus,servicemonitor -l environment="$ENVIRONMENT" --all-namespaces 2>/dev/null || log_warning "No environment-specific monitoring found"
+        else
+            kubectl delete prometheus -l environment="$ENVIRONMENT" --all-namespaces --ignore-not-found=true
+            kubectl delete servicemonitor -l environment="$ENVIRONMENT" --all-namespaces --ignore-not-found=true
+            if [[ -f "monitoring/prometheus-config-${ENVIRONMENT}.yaml" ]]; then
+                kubectl delete -f "monitoring/prometheus-config-${ENVIRONMENT}.yaml" --ignore-not-found=true
+            fi
+            log_success "Environment-specific monitoring removed"
+        fi
+    else
+        log_info "Skipping monitoring cleanup (disabled in $ENVIRONMENT configuration)"
     fi
     
     # Delete namespaces (this will clean up any remaining resources)

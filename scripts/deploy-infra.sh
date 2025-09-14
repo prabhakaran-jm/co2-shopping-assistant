@@ -10,6 +10,7 @@ GEMINI_API_KEY="${GOOGLE_AI_API_KEY:-}"
 REGION="${GCP_REGION:-us-central1}"
 CLUSTER_NAME="${GKE_CLUSTER_NAME:-co2-assistant-cluster}"
 IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
+ENVIRONMENT="${ENVIRONMENT:-}"
 FORCE_DEPLOYMENT="${FORCE_DEPLOYMENT:-false}"
 
 # Function to show usage
@@ -24,6 +25,7 @@ show_usage() {
     echo "  --region REGION            GCP region (default: us-central1)"
     echo "  --cluster-name NAME        GKE cluster name (default: co2-assistant-cluster)"
     echo "  --image-tag TAG            Docker image tag (default: latest)"
+    echo "  --environment ENV          Environment: dev or prod (optional, for app configs only)"
     echo "  --help                     Show this help message"
     echo ""
     echo "This script creates the complete infrastructure:"
@@ -32,8 +34,17 @@ show_usage() {
     echo "  ✅ Service accounts and IAM bindings"
     echo "  ✅ Basic Kubernetes resources"
     echo ""
+    echo "Note: Infrastructure is shared across environments. Environment-specific"
+    echo "configurations (security policies, monitoring) are applied during app deployment."
+    echo ""
+    echo "Backend Configuration:"
+    echo "  - Uses backend.hcl by default"
+    echo "  - Uses backend-ENV.hcl if environment-specific backend exists"
+    echo "  - Example: --environment prod uses backend-prod.hcl (if exists)"
+    echo ""
     echo "After infrastructure deployment, use deploy-app.sh to deploy applications:"
     echo "  ./scripts/deploy-app.sh --project-id PROJECT_ID --gemini-api-key KEY"
+    echo "  ./scripts/deploy-app.sh --project-id PROJECT_ID --gemini-api-key KEY --environment prod"
     echo ""
     echo "Examples:"
     echo "  $0 --project-id my-project --gemini-api-key my-api-key"
@@ -61,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --image-tag)
             IMAGE_TAG="$2"
+            shift 2
+            ;;
+        --environment)
+            ENVIRONMENT="$2"
             shift 2
             ;;
         --force)
@@ -119,14 +134,34 @@ gcloud config set project "$PROJECT_ID"
 log_info "Configuring kubectl for cluster..."
 gcloud container clusters get-credentials "$CLUSTER_NAME" --region="$REGION"
 
-# Initialize Terraform using backend.hcl
-log_info "Initializing Terraform..."
-cd terraform
-terraform init -backend-config=backend.hcl
+# Determine backend configuration based on environment
+local backend_config="backend.hcl"
+if [[ -n "$ENVIRONMENT" && -f "envs/${ENVIRONMENT}.tfvars" ]]; then
+    # Check if environment-specific backend exists
+    if [[ -f "backend-${ENVIRONMENT}.hcl" ]]; then
+        backend_config="backend-${ENVIRONMENT}.hcl"
+        log_info "Using environment-specific backend: $backend_config"
+    else
+        log_info "Using default backend: $backend_config (environment-specific backend not found)"
+    fi
+else
+    log_info "Using default backend: $backend_config"
+fi
 
-# Plan Terraform deployment
+# Initialize Terraform using appropriate backend configuration
+log_info "Initializing Terraform with backend: $backend_config..."
+cd terraform
+terraform init -backend-config="$backend_config"
+
+# Plan Terraform deployment (with optional environment-specific variables)
 log_info "Planning Terraform deployment..."
-terraform plan -out=tfplan
+if [[ -n "$ENVIRONMENT" && -f "envs/${ENVIRONMENT}.tfvars" ]]; then
+    log_info "Using environment-specific configuration: envs/${ENVIRONMENT}.tfvars"
+    terraform plan -var-file="envs/${ENVIRONMENT}.tfvars" -out=tfplan
+else
+    log_info "Using default Terraform configuration (no environment-specific variables)"
+    terraform plan -out=tfplan
+fi
 
 # Apply Terraform deployment
 log_info "Applying Terraform deployment..."

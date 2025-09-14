@@ -28,11 +28,16 @@ show_usage() {
     echo "  --cluster-name NAME        GKE cluster name (default: co2-assistant-cluster)"
     echo "  --image-tag TAG            Docker image tag (default: latest)"
     echo "  --environment ENV          Environment: dev or prod (default: dev)"
+    echo "                             Uses terraform/envs/ENV.tfvars for app-specific configs"
     echo "  --clean                    Clean existing resources before deployment (slower)"
     echo "  --minimal                  Use minimal resources for faster deployment"
     echo "  --no-cert                  Skip certificate creation (HTTP only)"
     echo "  --force                    Skip confirmation prompts"
     echo "  --help                     Show this help message"
+    echo ""
+    echo "Environment-specific configurations:"
+    echo "  dev:  Minimal security, development-optimized settings"
+    echo "  prod: Full security, production-grade policies and monitoring"
     echo ""
     echo "Examples:"
     echo "  $0 --project-id my-project --gemini-api-key my-key"
@@ -121,6 +126,28 @@ deploy_applications() {
     log_info "Cluster: $CLUSTER_NAME"
     log_info "Environment: $ENVIRONMENT"
     log_info "Image Tag: $IMAGE_TAG"
+    
+    # Load environment-specific configuration if available
+    local env_config_file="terraform/envs/${ENVIRONMENT}.tfvars"
+    local enable_network_policy="false"
+    local enable_managed_prometheus="true"
+    local enable_managed_cni="true"
+    
+    if [[ -f "$env_config_file" ]]; then
+        log_info "Loading environment-specific configuration from $env_config_file"
+        # Extract key configuration values from tfvars file
+        enable_network_policy=$(grep "enable_network_policy" "$env_config_file" | cut -d'=' -f2 | tr -d ' ' || echo "false")
+        enable_managed_prometheus=$(grep "enable_managed_prometheus" "$env_config_file" | cut -d'=' -f2 | tr -d ' ' || echo "true")
+        enable_managed_cni=$(grep "enable_managed_cni" "$env_config_file" | cut -d'=' -f2 | tr -d ' ' || echo "true")
+        
+        log_info "Environment configuration loaded:"
+        log_info "  Network Policy: $enable_network_policy"
+        log_info "  Managed Prometheus: $enable_managed_prometheus"
+        log_info "  Managed CNI: $enable_managed_cni"
+    else
+        log_info "No environment-specific configuration found at $env_config_file"
+        log_info "Using default application settings"
+    fi
     
     # Validate required parameters
     if ! validate_env_vars "PROJECT_ID" "GEMINI_API_KEY"; then
@@ -326,7 +353,7 @@ deploy_applications() {
     log_info "Deploying ob-proxy for cross-namespace routing..."
     kubectl apply -f k8s/ob-proxy.yaml
     
-    # Deploy Production-Grade Security Policies
+    # Deploy Environment-Specific Security Policies
     log_info "Deploying security policies..."
     if [[ -f "security/pod-security-policy.yaml" ]]; then
         kubectl apply -f security/pod-security-policy.yaml
@@ -335,25 +362,45 @@ deploy_applications() {
         log_warning "Pod Security Policy not found, skipping..."
     fi
     
-    # Deploy Monitoring and Observability
-    log_info "Deploying monitoring stack..."
-    # Deploy basic monitoring (environment-specific monitoring available via deploy-environment.sh)
-    if [[ -f "monitoring/prometheus-config-dev.yaml" ]]; then
-        kubectl apply -f monitoring/prometheus-config-dev.yaml
-        log_success "Basic Prometheus monitoring deployed (dev configuration)"
-    elif [[ -f "monitoring/prometheus-config-prod.yaml" ]]; then
-        kubectl apply -f monitoring/prometheus-config-prod.yaml
-        log_success "Prometheus monitoring deployed (prod configuration)"
+    # Deploy Network Policies based on environment configuration
+    if [[ "$enable_network_policy" == "true" ]]; then
+        log_info "Deploying network policies (production security mode)..."
+        if [[ -f "security/network-policy-${ENVIRONMENT}.yaml" ]]; then
+            kubectl apply -f "security/network-policy-${ENVIRONMENT}.yaml"
+            log_success "Network policies deployed for $ENVIRONMENT environment"
+        elif [[ -f "security/network-policy-prod.yaml" ]]; then
+            kubectl apply -f security/network-policy-prod.yaml
+            log_success "Production network policies deployed"
+        else
+            log_warning "Network policy configuration not found for $ENVIRONMENT"
+        fi
     else
-        log_warning "Prometheus config not found, skipping..."
+        log_info "Skipping network policies (development mode - minimal security)"
     fi
     
-    # Deploy observability stack (basic configuration)
-    if [[ -f "monitoring/observability-stack.yaml" ]]; then
-        kubectl apply -f monitoring/observability-stack.yaml -l environment=dev
-        log_success "Basic observability stack deployed"
+    # Deploy Environment-Specific Monitoring and Observability
+    log_info "Deploying monitoring stack..."
+    if [[ "$enable_managed_prometheus" == "true" ]]; then
+        log_info "Deploying managed Prometheus monitoring..."
+        if [[ -f "monitoring/prometheus-config-${ENVIRONMENT}.yaml" ]]; then
+            kubectl apply -f "monitoring/prometheus-config-${ENVIRONMENT}.yaml"
+            log_success "Prometheus monitoring deployed ($ENVIRONMENT configuration)"
+        elif [[ -f "monitoring/prometheus-config-dev.yaml" ]]; then
+            kubectl apply -f monitoring/prometheus-config-dev.yaml
+            log_success "Basic Prometheus monitoring deployed (dev configuration)"
+        else
+            log_warning "Prometheus config not found, skipping..."
+        fi
+        
+        # Deploy observability stack with environment-specific configuration
+        if [[ -f "monitoring/observability-stack.yaml" ]]; then
+            kubectl apply -f monitoring/observability-stack.yaml -l environment="$ENVIRONMENT"
+            log_success "Observability stack deployed for $ENVIRONMENT environment"
+        else
+            log_warning "Observability stack not found, skipping..."
+        fi
     else
-        log_warning "Observability stack not found, skipping..."
+        log_info "Skipping managed Prometheus (disabled in environment configuration)"
     fi
     
     if [[ -f "k8s/hpa.yaml" ]]; then
