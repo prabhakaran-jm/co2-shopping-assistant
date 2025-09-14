@@ -354,6 +354,40 @@ class ComparisonMCPServer:
         
         return insights
     
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check for this MCP server"""
+        try:
+            # Basic health checks
+            status = "healthy"
+            issues = []
+            
+            # Check if boutique MCP server is available
+            if not self.boutique_mcp_server:
+                status = "unhealthy"
+                issues.append("Boutique MCP server not available")
+            
+            return {
+                "server_name": "ComparisonMCPServer",
+                "status": status,
+                "issues": issues,
+                "capabilities": [
+                    "product_comparison",
+                    "criteria_analysis",
+                    "insights_generation"
+                ],
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Health check failed for ComparisonMCPServer: {str(e)}")
+            return {
+                "server_name": "ComparisonMCPServer",
+                "status": "unhealthy",
+                "issues": [str(e)],
+                "capabilities": [],
+                "timestamp": asyncio.get_event_loop().time()
+            }
+    
     async def get_metrics(self) -> Dict[str, Any]:
         """Get server metrics"""
         return {
