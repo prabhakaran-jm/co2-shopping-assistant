@@ -73,9 +73,22 @@ class CO2ShoppingAssistant {
     addMessage(sender, content) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}`;
-        messageDiv.innerHTML = content;
+        messageDiv.innerHTML = this.renderMarkdown(content);
         this.chatMessages.appendChild(messageDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+    
+    renderMarkdown(text) {
+        // Convert Markdown images to HTML img tags
+        let html = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 200px; height: auto; border-radius: 8px; margin: 5px 0;" />');
+        
+        // Convert **bold** to <strong>
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Convert line breaks to <br>
+        html = html.replace(/\n/g, '<br>');
+        
+        return html;
     }
     
     extractAndUpdateCO2Savings(response) {
