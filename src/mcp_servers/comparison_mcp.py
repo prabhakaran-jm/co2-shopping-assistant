@@ -54,16 +54,14 @@ class ComparisonMCPServer:
                 }
             
             # Search for products
-            search_result = await self.boutique_mcp_server.search_products("")
+            products = await self.boutique_mcp_server.search_products("")
             
-            if not search_result.get("success", False):
+            if not products:
                 return {
                     "success": False,
                     "error": "Failed to fetch products from boutique",
                     "products": []
                 }
-            
-            products = search_result.get("products", [])
             
             # Filter products based on comparison type
             if comparison_type != "all":
