@@ -24,8 +24,10 @@ from .agents.product_discovery_agent import ProductDiscoveryAgent
 from .agents.co2_calculator_agent import CO2CalculatorAgent
 from .agents.cart_management_agent import CartManagementAgent
 from .agents.checkout_agent import CheckoutAgent
+from .agents.comparison_agent import ComparisonAgent
 from .mcp_servers.boutique_mcp import BoutiqueMCPServer
 from .mcp_servers.co2_mcp import CO2MCPServer
+from .mcp_servers.comparison_mcp import ComparisonMCPServer
 from .a2a.protocol import A2AProtocol
 
 # Configure structured logging
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing MCP servers...")
         mcp_servers["boutique"] = BoutiqueMCPServer()
         mcp_servers["co2"] = CO2MCPServer()
+        mcp_servers["comparison"] = ComparisonMCPServer(boutique_mcp_server=mcp_servers["boutique"])
         
         await mcp_servers["boutique"].start()
         await mcp_servers["co2"].start()
@@ -97,6 +100,7 @@ async def lifespan(app: FastAPI):
         agents["CO2CalculatorAgent"] = CO2CalculatorAgent()
         agents["CartManagementAgent"] = CartManagementAgent()
         agents["CheckoutAgent"] = CheckoutAgent()
+        agents["ComparisonAgent"] = ComparisonAgent(comparison_mcp_server=mcp_servers["comparison"])
         agents["host"] = HostAgent(sub_agents=list(agents.values()))
         
         # Register all agents with A2A protocol

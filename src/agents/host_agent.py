@@ -219,18 +219,27 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "shipping", "delivery", "address", "billing"
         ]
         
+        # Comparison patterns
+        comparison_keywords = [
+            "compare", "comparison", "vs", "versus", "better", "best", "rank",
+            "ranking", "top", "which is", "difference", "analyze", "analysis",
+            "eco-value", "co2 efficiency", "price optimization", "comprehensive"
+        ]
+        
         # Calculate confidence scores
         product_score = sum(1 for keyword in product_keywords if keyword in message_lower)
         co2_score = sum(1 for keyword in co2_keywords if keyword in message_lower)
         cart_score = sum(1 for keyword in cart_keywords if keyword in message_lower)
         checkout_score = sum(1 for keyword in checkout_keywords if keyword in message_lower)
+        comparison_score = sum(1 for keyword in comparison_keywords if keyword in message_lower)
         
         # Determine primary agent based on highest score
         scores = {
             "ProductDiscoveryAgent": product_score,
             "CO2CalculatorAgent": co2_score,
             "CartManagementAgent": cart_score,
-            "CheckoutAgent": checkout_score
+            "CheckoutAgent": checkout_score,
+            "ComparisonAgent": comparison_score
         }
         
         primary_agent = max(scores, key=scores.get)
@@ -249,6 +258,8 @@ Always provide helpful, environmentally conscious responses that guide users tow
                 intent["intent_type"] = "cart_operation"
             elif primary_agent == "CheckoutAgent":
                 intent["intent_type"] = "checkout_process"
+            elif primary_agent == "ComparisonAgent":
+                intent["intent_type"] = "product_comparison"
         
         # Extract parameters with context
         intent["parameters"] = await self._extract_parameters(message, intent["intent_type"], context)
