@@ -165,7 +165,7 @@ Always help users complete their purchases while minimizing environmental impact
     async def _handle_checkout_process(self, message: str, session_id: str) -> str:
         """Handle checkout process requests."""
         try:
-            # Get cart contents (mock implementation)
+            # Get cart contents from CartManagementAgent via Host session context, fallback to mock
             cart_contents = await self._get_cart_contents(session_id)
             
             if not cart_contents.get("items"):
@@ -311,27 +311,13 @@ I can help you with:
 Ready to complete your environmentally conscious purchase? Let me know how I can help! 🌍"""
     
     async def _get_cart_contents(self, session_id: str) -> Dict[str, Any]:
-        """Get cart contents (mock implementation)."""
-        # Mock cart contents
-        return {
-            "items": [
-                {
-                    "product_id": "ECO-LAPTOP-001",
-                    "name": "Eco-Friendly Laptop",
-                    "price": 899.99,
-                    "quantity": 1,
-                    "co2_emissions": 45.5
-                },
-                {
-                    "product_id": "ORGANIC-SHIRT-003",
-                    "name": "Organic Cotton T-Shirt",
-                    "price": 29.99,
-                    "quantity": 2,
-                    "co2_emissions": 8.5
-                }
-            ],
-            "session_id": session_id
-        }
+        """Get cart contents from shared cart store."""
+        try:
+            from ..utils import cart_store
+            cart = cart_store.get_or_create_cart(session_id)
+            return {"items": cart.get("items", []), "session_id": session_id}
+        except Exception:
+            return {"items": [], "session_id": session_id}
     
     async def _calculate_order_totals(self, cart_contents: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate order totals."""

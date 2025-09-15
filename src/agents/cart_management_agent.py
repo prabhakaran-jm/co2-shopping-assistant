@@ -9,6 +9,7 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from ..utils import cart_store
 import structlog
 
 from .base_agent import BaseAgent
@@ -84,14 +85,8 @@ Always help users make environmentally conscious cart decisions while meeting th
             logger.info("Processing cart management request", message=message, session_id=session_id)
             
             # Initialize cart session if needed
-            if session_id not in self.cart_sessions:
-                self.cart_sessions[session_id] = {
-                    "items": [],
-                    "created_at": datetime.now(),
-                    "last_updated": datetime.now(),
-                    "total_value": 0.0,
-                    "total_co2": 0.0
-                }
+            # Ensure shared cart exists
+            cart_store.get_or_create_cart(session_id)
             
             # Parse the request type
             request_type = await self._parse_cart_request_type(message)
@@ -180,7 +175,7 @@ Always help users make environmentally conscious cart decisions while meeting th
             
         except Exception as e:
             logger.error("Add to cart failed", error=str(e))
-            return "I encountered an error while adding the item to your cart. Please try again."
+            return f"I encountered an error while adding the item to your cart: {str(e)}"
     
     async def _handle_remove_from_cart(self, message: str, session_id: str) -> str:
         """Handle remove from cart requests."""
@@ -319,15 +314,26 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
         if id_match:
             return id_match.group(0)
         
-        # Look for product names (words after "add" or similar)
-        words = message.lower().split()
+        # Look for product names (after add/put/include and before 'to cart')
+        msg = message.lower()
+        if "to my cart" in msg:
+            msg = msg.replace("to my cart", "to cart")
+        if "add" in msg and "to cart" in msg:
+            between = msg.split("add", 1)[1].split("to cart", 1)[0].strip()
+            if between:
+                return between
+        # Fallback: next words after add/put/include
+        words = msg.split()
         add_indicators = ["add", "put", "include"]
-        
         for i, word in enumerate(words):
             if word in add_indicators and i + 1 < len(words):
-                # Take next few words as product name
-                product_words = words[i + 1:i + 4]
-                return " ".join(product_words)
+                product_words = []
+                for w in words[i + 1:i + 5]:
+                    if w in ["to", "cart", "my", "in"]:
+                        break
+                    product_words.append(w)
+                if product_words:
+                    return " ".join(product_words)
         
         return None
     
@@ -340,14 +346,26 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
         if id_match:
             return id_match.group(0)
         
-        # Look for product names
-        words = message.lower().split()
+        # Look for product names before 'from cart'
+        msg = message.lower()
+        if "from my cart" in msg:
+            msg = msg.replace("from my cart", "from cart")
+        if "remove" in msg and "from cart" in msg:
+            between = msg.split("remove", 1)[1].split("from cart", 1)[0].strip()
+            if between:
+                return between
+        # Fallback: next words after remove/delete/take out
+        words = msg.split()
         remove_indicators = ["remove", "delete", "take out"]
-        
         for i, word in enumerate(words):
             if word in remove_indicators and i + 1 < len(words):
-                product_words = words[i + 1:i + 4]
-                return " ".join(product_words)
+                product_words = []
+                for w in words[i + 1:i + 5]:
+                    if w in ["from", "cart", "my", "in"]:
+                        break
+                    product_words.append(w)
+                if product_words:
+                    return " ".join(product_words)
         
         return None
     
@@ -380,35 +398,17 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _get_product_details(self, product_info: str) -> Optional[Dict[str, Any]]:
         """Get product details (mock implementation)."""
-        # Mock product database
+        # Mock product database (Online Boutique items)
         mock_products = [
-            {
-                "id": "ECO-LAPTOP-001",
-                "name": "Eco-Friendly Laptop",
-                "price": 899.99,
-                "category": "electronics",
-                "co2_emissions": 45.5,
-                "eco_score": 8.5,
-                "description": "Energy-efficient laptop made from recycled materials"
-            },
-            {
-                "id": "GREEN-PHONE-002",
-                "name": "Sustainable Smartphone",
-                "price": 599.99,
-                "category": "electronics",
-                "co2_emissions": 32.1,
-                "eco_score": 9.2,
-                "description": "Phone with biodegradable components and solar charging"
-            },
-            {
-                "id": "ORGANIC-SHIRT-003",
-                "name": "Organic Cotton T-Shirt",
-                "price": 29.99,
-                "category": "clothing",
-                "co2_emissions": 8.5,
-                "eco_score": 9.5,
-                "description": "100% organic cotton t-shirt with fair trade certification"
-            }
+            {"id": "sunglasses", "name": "Sunglasses", "price": 19.99, "category": "accessories", "co2_emissions": 49.0, "eco_score": 9},
+            {"id": "tank-top", "name": "Tank Top", "price": 18.99, "category": "clothing", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "watch", "name": "Watch", "price": 109.99, "category": "accessories", "co2_emissions": 44.5, "eco_score": 4},
+            {"id": "loafers", "name": "Loafers", "price": 89.99, "category": "clothing", "co2_emissions": 45.5, "eco_score": 5},
+            {"id": "hairdryer", "name": "Hairdryer", "price": 24.99, "category": "home", "co2_emissions": 48.8, "eco_score": 8},
+            {"id": "candle-holder", "name": "Candle Holder", "price": 18.99, "category": "home", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "salt-and-pepper-shakers", "name": "Salt & Pepper Shakers", "price": 18.49, "category": "home", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "bamboo-glass-jar", "name": "Bamboo Glass Jar", "price": 5.49, "category": "home", "co2_emissions": 49.7, "eco_score": 9},
+            {"id": "mug", "name": "Mug", "price": 8.99, "category": "home", "co2_emissions": 49.6, "eco_score": 9}
         ]
         
         # Find matching product
@@ -421,7 +421,7 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _add_item_to_cart(self, product_details: Dict[str, Any], session_id: str) -> Dict[str, Any]:
         """Add item to cart."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         
         # Check if item already exists in cart
         for item in cart["items"]:
@@ -449,7 +449,7 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _remove_item_from_cart(self, item_identifier: str, session_id: str) -> Optional[Dict[str, Any]]:
         """Remove item from cart."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         
         for i, item in enumerate(cart["items"]):
             if (item_identifier.lower() in item["name"].lower() or 
@@ -462,7 +462,7 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _update_cart_item(self, update_params: Dict[str, Any], session_id: str) -> Optional[Dict[str, Any]]:
         """Update cart item."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         
         for item in cart["items"]:
             if (update_params["item_identifier"].lower() in item["name"].lower() or 
@@ -478,7 +478,7 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _get_cart_contents(self, session_id: str) -> Dict[str, Any]:
         """Get cart contents."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         return {
             "items": cart["items"].copy(),
             "created_at": cart["created_at"],
@@ -487,13 +487,13 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     
     async def _clear_cart(self, session_id: str):
         """Clear cart contents."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         cart["items"] = []
         cart["last_updated"] = datetime.now()
     
     async def _calculate_cart_totals(self, session_id: str) -> Dict[str, Any]:
         """Calculate cart totals including CO2 emissions."""
-        cart = self.cart_sessions[session_id]
+        cart = cart_store.get_or_create_cart(session_id)
         
         total_value = 0.0
         total_co2 = 0.0

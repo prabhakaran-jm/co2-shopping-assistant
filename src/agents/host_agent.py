@@ -182,6 +182,14 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "parameters": {}
         }
 
+        # Cart/checkout explicit patterns
+        cart_view_patterns = ["what's in my cart", "whats in my cart", "show cart", "view cart", "cart total"]
+        cart_clear_patterns = ["clear cart", "empty cart"]
+        cart_remove_markers = ["remove", "delete", "take out"]
+        cart_add_markers = ["add to cart", "add "]
+        cart_quantity_markers = ["quantity", "set", "change", "update"]
+        checkout_phrases = ["checkout", "pay now", "place order", "pay", "complete purchase"]
+
         # Prefer product discovery for explicit "find" + lower-footprint phrasing
         low_footprint_phrases = [
             "lower carbon footprint", "lower co2", "low co2",
@@ -192,6 +200,46 @@ Always provide helpful, environmentally conscious responses that guide users tow
             intent["intent_type"] = "product_search"
             intent["confidence"] = 0.9
             intent["parameters"] = {"query": message}
+            return intent
+
+        # Explicit cart routing
+        if any(p in message_lower for p in cart_view_patterns):
+            intent["primary_agent"] = "CartManagementAgent"
+            intent["intent_type"] = "cart_operation"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"operation": "view"}
+            return intent
+        if any(p in message_lower for p in cart_clear_patterns):
+            intent["primary_agent"] = "CartManagementAgent"
+            intent["intent_type"] = "cart_operation"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"operation": "clear"}
+            return intent
+        if "cart" in message_lower and any(p in message_lower for p in cart_remove_markers):
+            intent["primary_agent"] = "CartManagementAgent"
+            intent["intent_type"] = "cart_operation"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"operation": "remove"}
+            return intent
+        if ("add to cart" in message_lower) or ("cart" in message_lower and any(p in message_lower for p in cart_add_markers)):
+            intent["primary_agent"] = "CartManagementAgent"
+            intent["intent_type"] = "cart_operation"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"operation": "add"}
+            return intent
+        if "cart" in message_lower and any(p in message_lower for p in cart_quantity_markers):
+            intent["primary_agent"] = "CartManagementAgent"
+            intent["intent_type"] = "cart_operation"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"operation": "update_quantity"}
+            return intent
+
+        # Explicit checkout routing
+        if any(p in message_lower for p in checkout_phrases):
+            intent["primary_agent"] = "CheckoutAgent"
+            intent["intent_type"] = "checkout_process"
+            intent["confidence"] = 0.9
+            intent["parameters"] = {}
             return intent
         
         # Check for follow-up questions and context
