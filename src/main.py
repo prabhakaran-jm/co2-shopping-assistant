@@ -12,7 +12,8 @@ from contextlib import asynccontextmanager
 from typing import Dict, Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -204,11 +205,18 @@ async def metrics():
 
 
 @app.post("/api/chat")
-async def chat_endpoint(request: Dict[str, Any]):
+async def chat_endpoint(payload: Dict[str, Any], request: Request):
     """Main chat endpoint for user interactions."""
     try:
-        user_message = request.get("message", "")
-        session_id = request.get("session_id", "default")
+        user_message = payload.get("message", "")
+        # Derive a stable session id: prefer explicit payload, then cookie, else generate
+        session_id = payload.get("session_id")
+        cookie_sid = request.cookies.get("assistant_sid")
+        if not session_id or str(session_id).strip() == "":
+            session_id = cookie_sid
+        if not session_id or str(session_id).strip() == "":
+            import uuid
+            session_id = f"sid_{uuid.uuid4().hex}"
         
         if not user_message:
             raise HTTPException(status_code=400, detail="Message is required")
@@ -222,11 +230,24 @@ async def chat_endpoint(request: Dict[str, Any]):
         response = await host_agent.process_message(user_message, session_id)
         print(f"MAIN: Received response from host agent: {type(response)}")
         
-        return {
+        # Return JSON with a Set-Cookie for assistant_sid to keep sessions consistent
+        data = {
             "response": response,
             "session_id": session_id,
             "timestamp": asyncio.get_event_loop().time()
         }
+        json_resp = JSONResponse(content=data)
+        # Only set cookie if not present
+        if cookie_sid != session_id:
+            json_resp.set_cookie(
+                key="assistant_sid",
+                value=session_id,
+                httponly=False,
+                secure=False,
+                samesite="Lax",
+                max_age=60 * 60 * 24 * 7
+            )
+        return json_resp
         
     except Exception as e:
         logger.error("Chat processing failed", error=str(e))
