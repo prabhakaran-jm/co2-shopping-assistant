@@ -207,6 +207,24 @@ Always explain why certain products are more environmentally friendly and help u
         try:
             # Extract recommendation parameters
             rec_params = await self._extract_recommendation_parameters(message)
+            message_lower = message.lower()
+            
+            # Alternatives flow: "suggest sustainable alternatives for <product>"
+            if "alternative" in message_lower:
+                ref = await self._extract_product_identifier(message)
+                if not ref:
+                    return "Please specify the product to suggest alternatives for (e.g., 'alternatives for watch')."
+                alts = await self._get_alternatives(ref, limit=5)
+                if not alts:
+                    return f"I couldn't find better eco alternatives for {ref}."
+                # Format alternatives response
+                response = "🌿 Sustainable Alternatives\n\n"
+                for i, p in enumerate(alts, 1):
+                    response += f"{i}. **{p['name']}** (${p['price']:.2f})\n"
+                    response += f"   • Eco Score: {p['eco_score']}/10\n"
+                    response += f"   • CO2 Impact: {p['co2_emissions']:.1f}kg\n\n"
+                response += "Would you like to compare any of these?"
+                return response
             
             # Get recommendations
             recommendations = await self._get_recommendations(rec_params)
@@ -555,8 +573,22 @@ What would you like to explore? I'll make sure to highlight the environmental be
     
     async def _get_recommendations(self, rec_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get product recommendations."""
-        # Mock implementation
-        return await self._search_products(rec_params)
+        # Fetch broadly (ignore free-text query for recs), then score
+        products = await self._search_products({
+            "query": "",
+            "category": rec_params.get("category"),
+            "max_price": rec_params.get("max_price"),
+            "limit": rec_params.get("limit", 10)
+        })
+        normalized = await self._enrich_with_co2_data(products)
+        if not normalized:
+            return []
+        # Rank: higher eco_score first, then lower CO2, then lower price
+        ranked = sorted(
+            normalized,
+            key=lambda p: (-p.get("eco_score", 0), p.get("co2_emissions", 1e9), p.get("price", 1e9))
+        )
+        return ranked[: rec_params.get("limit", 5)]
     
     async def _get_products_for_comparison(self, comparison_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get products for comparison."""
@@ -639,18 +671,43 @@ What would you like to explore? I'll make sure to highlight the environmental be
     def _format_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
         """Format recommendation results."""
         if not recommendations:
-            return "I couldn't generate recommendations based on your criteria. Could you provide more details about what you're looking for?"
+            # Graceful default suggestions when no criteria
+            return (
+                "I couldn't generate recommendations from your criteria. "
+                "Try specifying a category or price limit (e.g., 'eco-friendly under $20')."
+            )
         
         response = f"🌱 Here are my top {len(recommendations)} sustainable recommendations:\n\n"
         
         for i, product in enumerate(recommendations, 1):
             response += f"{i}. **{product['name']}** (${product['price']:.2f})\n"
-            response += f"   • Environmental Impact: {product['co2_emissions']:.1f}kg CO2\n"
-            response += f"   • Why it's eco-friendly: {product['description']}\n\n"
+            response += f"   • Eco Score: {product['eco_score']}/10\n"
+            response += f"   • CO2 Impact: {product['co2_emissions']:.1f}kg\n"
+            response += f"   • Reason: high eco-score with relatively low CO2 for the price\n\n"
         
         response += "💡 These recommendations prioritize environmental sustainability while meeting your needs. Would you like to compare any of these products?"
         
         return response
+
+    async def _get_alternatives(self, reference: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Find sustainable alternatives in same/related category with better eco/CO2."""
+        # Find the reference product first
+        base_results = await self._search_products({"query": reference, "limit": 5})
+        if not base_results:
+            return []
+        base = base_results[0]
+        base_norm = (await self._enrich_with_co2_data([base]))[0]
+        base_cat = (base_norm.get("categories") or [None])[0]
+        # Search in same category broadly
+        candidates = await self._search_products({"category": base_cat, "limit": 20})
+        norm = await self._enrich_with_co2_data(candidates)
+        # Filter better eco/CO2 than base
+        better = [p for p in norm if (p.get("eco_score", 0) > base_norm.get("eco_score", 0)) or (p.get("co2_emissions", 1e9) < base_norm.get("co2_emissions", 0))]
+        # Rank by eco score desc then CO2 asc
+        ranked = sorted(better, key=lambda p: (-p.get("eco_score", 0), p.get("co2_emissions", 1e9)))
+        # Exclude the same product
+        ranked = [p for p in ranked if p.get("name") != base_norm.get("name")]
+        return ranked[:limit]
     
     def _format_comparison_response(self, products: List[Dict[str, Any]]) -> str:
         """Format product comparison results."""

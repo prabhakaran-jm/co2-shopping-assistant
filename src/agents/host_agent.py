@@ -181,6 +181,18 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "intent_type": "unknown",
             "parameters": {}
         }
+
+        # Prefer product discovery for explicit "find" + lower-footprint phrasing
+        low_footprint_phrases = [
+            "lower carbon footprint", "lower co2", "low co2",
+            "lower emissions", "low emissions"
+        ]
+        if "find" in message_lower and any(p in message_lower for p in low_footprint_phrases):
+            intent["primary_agent"] = "ProductDiscoveryAgent"
+            intent["intent_type"] = "product_search"
+            intent["confidence"] = 0.9
+            intent["parameters"] = {"query": message}
+            return intent
         
         # Check for follow-up questions and context
         conversation_history = context.get("conversation_history", [])
@@ -241,6 +253,14 @@ Always provide helpful, environmentally conscious responses that guide users tow
         checkout_score = sum(1 for keyword in checkout_keywords if keyword in message_lower)
         comparison_score = sum(1 for keyword in comparison_keywords if keyword in message_lower)
         
+        # Prefer discovery for recommendation phrasing
+        if ("recommend" in message_lower or "suggest" in message_lower):
+            intent["primary_agent"] = "ProductDiscoveryAgent"
+            intent["intent_type"] = "product_search"
+            intent["confidence"] = 0.9
+            intent["parameters"] = {"query": message}
+            return intent
+
         # Determine primary agent based on highest score
         scores = {
             "ProductDiscoveryAgent": product_score,
