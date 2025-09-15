@@ -11,9 +11,9 @@ This agent provides sophisticated product comparison capabilities including:
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-import json
 
 from .base_agent import BaseAgent
+from ..utils.product_normalizer import normalize_products
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class ComparisonAgent(BaseAgent):
             logger.info(f"Comparing {len(products)} products using {comparison_type} criteria")
             
             # Validate and clean product data
-            validated_products = self._validate_products(products)
+            validated_products = normalize_products(products)
             
             if len(validated_products) < 2:
                 return self._create_error_response("Need at least 2 products to compare")

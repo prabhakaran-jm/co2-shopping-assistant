@@ -206,6 +206,11 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "sustainable", "climate", "footprint", "impact", "greenhouse",
             "environmental benefits", "carbon footprint"
         ]
+
+        # Savings patterns (route to ProductDiscoveryAgent's CO2 savings handler)
+        savings_keywords = [
+            "co2 savings", "carbon savings", "save co2", "savings"
+        ]
         
         # Cart management patterns
         cart_keywords = [
@@ -244,6 +249,14 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "CheckoutAgent": checkout_score,
             "ComparisonAgent": comparison_score
         }
+
+        # Explicitly route savings requests to ProductDiscoveryAgent
+        if any(kw in message_lower for kw in savings_keywords):
+            intent["primary_agent"] = "ProductDiscoveryAgent"
+            intent["intent_type"] = "product_search"
+            intent["confidence"] = 0.9
+            intent["parameters"] = {"query": message}
+            return intent
         
         primary_agent = max(scores, key=scores.get)
         max_score = scores[primary_agent]

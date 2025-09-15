@@ -6,12 +6,15 @@ and catalog operations with environmental consciousness.
 """
 
 import asyncio
-import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import structlog
 
 from .base_agent import BaseAgent
+from ..utils.product_normalizer import (
+    normalize_products,
+    normalize_product,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -105,6 +108,8 @@ Always explain why certain products are more environmentally friendly and help u
                 response = await self._handle_product_comparison(message, session_id)
             elif request_type == "details":
                 response = await self._handle_product_details(message, session_id)
+            elif request_type == "co2_savings":
+                response = await self._handle_co2_savings(message, session_id)
             else:
                 response = await self._handle_general_inquiry(message, session_id)
             
@@ -139,6 +144,7 @@ Always explain why certain products are more environmentally friendly and help u
         recommend_keywords = ["recommend", "suggest", "best", "top"]
         compare_keywords = ["compare", "vs", "versus", "difference"]
         details_keywords = ["details", "info", "about", "specifications"]
+        savings_keywords = ["savings", "save co2", "co2 savings", "reduce co2", "carbon savings"]
 
         if any(keyword in message_lower for keyword in search_keywords):
             return "search"
@@ -155,6 +161,9 @@ Always explain why certain products are more environmentally friendly and help u
         if any(keyword in message_lower for keyword in details_keywords):
             return "details"
 
+        if any(keyword in message_lower for keyword in savings_keywords):
+            return "co2_savings"
+
         if len(words) == 1:
             if words[0] == "show":
                 return "general"
@@ -169,7 +178,7 @@ Always explain why certain products are more environmentally friendly and help u
             logger.info("ProductDiscoveryAgent: Handling product search", message=message)
             
             # Extract search parameters
-            print(f"ProductDiscoveryAgent: Extracting search parameters...")
+            print("ProductDiscoveryAgent: Extracting search parameters...")
             search_params = await self._extract_search_parameters(message)
             print(f"ProductDiscoveryAgent: Extracted search parameters: {search_params}")
             logger.info("ProductDiscoveryAgent: Extracted search parameters", search_params=search_params)
@@ -285,6 +294,52 @@ I can help you with:
 
 What would you like to explore? I'll make sure to highlight the environmental benefits and CO2 impact of any products I suggest! 🌱"""
     
+    async def _handle_co2_savings(self, message: str, session_id: str) -> str:
+        """Compute potential CO2 savings based on efficient picks vs catalog avg."""
+        try:
+            # Broad fetch with minimal filters
+            products = await self._search_products({"query": "", "limit": 20})
+            if not products:
+                products = await self._search_products({"limit": 20})
+            if not products:
+                products = await self._get_fallback_products({})
+
+            norm = normalize_products(products)
+            if not norm:
+                return (
+                    "I couldn't find products to calculate CO2 savings."
+                )
+
+            # Catalog average
+            avg_co2 = sum(p["co2_emissions"] for p in norm) / len(norm)
+
+            # Efficient set: lowest CO2 per dollar (avoid div-by-zero)
+            def eff_metric(p):
+                return (p["co2_emissions"] / p["price"]) if p["price"] > 0 else float("inf")
+
+            efficient = sorted(norm, key=eff_metric)[:3]
+            if not efficient:
+                return (
+                    "I couldn't compute CO2 savings due to missing price data."
+                )
+
+            eff_avg = sum(p["co2_emissions"] for p in efficient) / len(efficient)
+            savings = max(0.0, avg_co2 - eff_avg)
+            names = ", ".join(p["name"] for p in efficient)
+
+            return (
+                "🧮 CO2 Savings Estimate\n\n"
+                f"• Catalog average per item: {avg_co2:.1f}kg\n"
+                f"• Efficient set average: {eff_avg:.1f}kg\n"
+                f"• Estimated savings choosing efficient options: "
+                f"{savings:.1f}kg per item\n\n"
+                f"Top efficient picks: {names}"
+            )
+        except Exception:
+            return (
+                "I couldn't compute CO2 savings right now. Please try again in a moment."
+            )
+    
     async def _extract_search_parameters(self, message: str) -> Dict[str, Any]:
         """Extract search parameters from user message."""
         import re
@@ -303,11 +358,21 @@ What would you like to explore? I'll make sure to highlight the environmental be
         if price_match:
             params["max_price"] = float(price_match.group(1))
         
-        # Extract category
-        categories = ["electronics", "clothing", "books", "home", "sports", "beauty", "automotive"]
-        for category in categories:
-            if category in message.lower():
-                params["category"] = category
+        # Extract category with synonyms mapped to available boutique categories
+        synonyms = {
+            "electronics": ["electronics", "gadgets", "devices"],
+            "clothing": ["clothing", "apparel", "clothes", "shirt", "tank top", "loafers"],
+            "accessories": ["accessories", "watch", "sunglasses"],
+            "home": ["home", "kitchen", "mug", "jar", "hairdryer"]
+        }
+        msg = message.lower()
+        for canonical, words in synonyms.items():
+            if any(w in msg for w in words):
+                # Map unsupported categories to closest available for the demo catalog
+                if canonical in ["clothing", "accessories", "home"]:
+                    params["category"] = canonical
+                elif canonical == "electronics":
+                    params["category"] = "accessories"
                 break
         
         # Check for eco-friendly keywords
@@ -424,6 +489,17 @@ What would you like to explore? I'll make sure to highlight the environmental be
             )
             
             logger.info("Retrieved products from boutique MCP", count=len(products))
+            # If no products due to category or strict filter, retry without category for graceful fallback
+            if not products and search_params.get("category"):
+                fallback_params = dict(search_params)
+                fallback_params.pop("category", None)
+                products = await self.boutique_mcp_server.search_products(
+                    query=fallback_params.get("query", ""),
+                    category=None,
+                    max_price=fallback_params.get("max_price"),
+                    min_price=fallback_params.get("min_price"),
+                    limit=fallback_params.get("limit", 10)
+                )
             return products
             
         except Exception as e:
@@ -468,30 +544,14 @@ What would you like to explore? I'll make sure to highlight the environmental be
             
             filtered_products.append(product)
         
+        # Graceful fallback: if category filtered out all, return eco-friendly top items
+        if not filtered_products:
+            return mock_products[: min(2, len(mock_products))]
         return filtered_products
     
     async def _enrich_with_co2_data(self, products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Enrich products with CO2 emission data."""
-        # Mock implementation - in real implementation would call CO2 MCP
-        for product in products:
-            # Extract price from the gRPC response structure
-            price_usd = product.get("price_usd", {})
-            price_units = price_usd.get("units", 0) + (price_usd.get("nanos", 0) / 1e9)
-            
-            # Mock CO2 data based on product type and price
-            base_co2 = 50.0  # Base CO2 in kg
-            # Use price as a proxy for eco-friendliness (lower price = more eco-friendly)
-            eco_factor = max(0.1, min(1.0, (1000 - price_units) / 1000))
-            product["co2_emissions"] = base_co2 * eco_factor
-            product["co2_rating"] = "Low" if product["co2_emissions"] < 30 else "Medium" if product["co2_emissions"] < 60 else "High"
-            
-            # Add eco_score for compatibility with response formatting
-            product["eco_score"] = max(1, min(10, int(10 * eco_factor)))
-            
-            # Add formatted price field for compatibility
-            product["price"] = f"${price_units:.2f}"
-        
-        return products
+        """Normalize and enrich products for consistent downstream formatting."""
+        return normalize_products(products)
     
     async def _get_recommendations(self, rec_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get product recommendations."""
@@ -550,36 +610,10 @@ What would you like to explore? I'll make sure to highlight the environmental be
         response += "=" * 50 + "\n\n"
         
         for i, product in enumerate(products, 1):
-            # Handle price formatting - extract from price_usd structure
-            price_value = 0.0
-            if 'price_usd' in product:
-                price_usd = product['price_usd']
-                if isinstance(price_usd, dict):
-                    units = price_usd.get('units', 0)
-                    nanos = price_usd.get('nanos', 0)
-                    price_value = units + (nanos / 1e9)
-                else:
-                    price_value = float(price_usd) if price_usd else 0.0
-            elif 'price' in product:
-                price_value = product.get('price', 0.0)
-                if isinstance(price_value, str):
-                    try:
-                        price_value = float(price_value)
-                    except (ValueError, TypeError):
-                        price_value = 0.0
-            
-            # Format CO2 emissions
+            price_value = product.get('price', 0.0)
             co2_emissions = product.get('co2_emissions', 0.0)
             co2_rating = product.get('co2_rating', 'Medium')
-            
-            # Get image URL
-            image_url = ""
-            picture_path = product.get('picture')
-            if picture_path:
-                if picture_path.startswith('/'):
-                    image_url = f"/ob-images{picture_path}"
-                else:
-                    image_url = f"/ob-images/{picture_path}"
+            image_url = product.get('image_url', '')
             
             # Create product card
             response += f"📦 **{i}. {product.get('name', 'N/A')}**\n"
@@ -639,29 +673,36 @@ What would you like to explore? I'll make sure to highlight the environmental be
     
     def _format_product_details_response(self, product: Dict[str, Any], co2_data: Dict[str, Any]) -> str:
         """Format detailed product information."""
-        # Extract price from gRPC response structure
-        price_usd = product.get("price_usd", {})
-        price_units = price_usd.get("units", 0) + (price_usd.get("nanos", 0) / 1e9)
+        normalized = normalize_product(product)
+        price_units = normalized["price"]
+        co2_total = normalized["co2_emissions"]
+        eco_score = normalized["eco_score"]
+        eco_label = normalized["co2_rating"]
         
-        response = f"📋 **Product Details: {product['name']}**\n\n"
+        response = f"📋 **Product Details: {normalized['name']}**\n\n"
         response += f"💰 **Price**: ${price_units:.2f}\n"
         
         # Handle categories (list from gRPC response)
-        categories = product.get("categories", [])
+        categories = normalized.get("categories", [])
         if categories:
             response += f"📦 **Categories**: {', '.join(categories)}\n"
         
-        response += f"📝 **Description**: {product['description']}\n\n"
+        response += f"📝 **Description**: {normalized['description']}\n\n"
         
         response += "🌱 **Environmental Impact**:\n"
-        response += f"• Manufacturing: {co2_data['manufacturing_co2']}kg CO2\n"
-        response += f"• Shipping: {co2_data['shipping_co2']}kg CO2\n"
-        response += f"• Usage: {co2_data['usage_co2']}kg CO2\n"
-        response += f"• Disposal: {co2_data['disposal_co2']}kg CO2\n"
-        response += f"• **Total**: {co2_data['total_co2']}kg CO2 ({co2_data['eco_rating']} impact)\n\n"
+        # Distribute the normalized total into a simple mock breakdown that sums to total
+        manuf = round(co2_total * 0.5, 1)
+        ship = round(co2_total * 0.16, 1)
+        usage = round(co2_total * 0.3, 1)
+        disp = round(max(0.0, co2_total - (manuf + ship + usage)), 1)
+        response += f"• Manufacturing: {manuf}kg CO2\n"
+        response += f"• Shipping: {ship}kg CO2\n"
+        response += f"• Usage: {usage}kg CO2\n"
+        response += f"• Disposal: {disp}kg CO2\n"
+        response += f"• **Total**: {co2_total:.1f}kg CO2 ({eco_label} impact)\n\n"
         
-        response += f"⭐ **Eco Score**: {product.get('eco_score', 'N/A')}/10\n"
-        response += f"🆔 **Product ID**: {product.get('id', 'N/A')}\n\n"
+        response += f"⭐ **Eco Score**: {eco_score}/10\n"
+        response += f"🆔 **Product ID**: {normalized.get('id', 'N/A')}\n\n"
         
         response += "💡 This product is selected for its environmental consciousness and sustainable features!"
         
