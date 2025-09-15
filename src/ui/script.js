@@ -4,6 +4,7 @@ class CO2ShoppingAssistant {
         this.sendButton = document.getElementById('send-button');
         this.chatMessages = document.getElementById('chat-messages');
         this.co2SavingsElement = document.getElementById('co2-savings');
+        // Start at 0; do not persist across sessions to avoid stale values
         this.totalCO2Saved = 0;
         
         this.initializeEventListeners();
@@ -59,6 +60,7 @@ class CO2ShoppingAssistant {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({ message: message })
         });
         
@@ -92,12 +94,16 @@ class CO2ShoppingAssistant {
     }
     
     extractAndUpdateCO2Savings(response) {
-        const co2Match = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]/i);
-        if (co2Match) {
-            const co2Amount = parseFloat(co2Match[1]);
-            this.totalCO2Saved += co2Amount;
-            this.updateCO2Display();
+        // Only update when the response explicitly states "CO2 saved"
+        const savedMatch = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]\s*saved/i);
+        if (savedMatch) {
+            const saved = parseFloat(savedMatch[1]);
+            if (!Number.isNaN(saved)) {
+                this.totalCO2Saved = Math.max(0, saved);
+                this.updateCO2Display();
+            }
         }
+        // Ensure non-savings messages never alter the badge
     }
     
     updateCO2Display() {
