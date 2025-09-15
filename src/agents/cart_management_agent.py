@@ -7,6 +7,7 @@ and cart state management with environmental consciousness.
 
 import asyncio
 import json
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from ..utils import cart_store
@@ -40,6 +41,17 @@ class CartManagementAgent(BaseAgent):
         self.cart_sessions = {}
         
         logger.info("Cart Management Agent initialized")
+        
+        # Simple alias map for product name variants
+        self.alias_map = {
+            "tanktop": "Tank Top",
+            "tank top": "Tank Top",
+            "candleholder": "Candle Holder",
+            "candle holder": "Candle Holder",
+            "bamboo jar": "Bamboo Glass Jar",
+            "glass jar": "Bamboo Glass Jar",
+            "jar": "Bamboo Glass Jar",
+        }
     
     def _get_cart_management_instruction(self) -> str:
         """Get instruction for the cart management agent."""
@@ -138,7 +150,7 @@ Always help users make environmentally conscious cart decisions while meeting th
             return "remove"
         elif any(word in message_lower for word in ["update", "change", "modify", "quantity"]):
             return "update"
-        elif any(word in message_lower for word in ["view", "show", "see", "cart", "items"]):
+        elif any(word in message_lower for word in ["view", "show", "see", "cart", "items", "show my cart"]):
             return "view"
         elif any(word in message_lower for word in ["clear", "empty", "remove all"]):
             return "clear"
@@ -150,28 +162,52 @@ Always help users make environmentally conscious cart decisions while meeting th
     async def _handle_add_to_cart(self, message: str, session_id: str) -> str:
         """Handle add to cart requests."""
         try:
-            # Extract product information
-            product_info = await self._extract_product_info(message)
+            msg = message.lower()
+            # Multi-item support: split by ' and ' or ',' before adding
+            candidate = await self._extract_product_info(message)
+            # If candidate still includes connectors, treat as multi
+            if candidate and (" and " in candidate.lower() or "," in candidate):
+                tmp = candidate
+                parts = [p.strip() for p in re.split(r",| and ", tmp) if p.strip()]
+                added = []
+                for part in parts:
+                    details = await self._get_product_details(part)
+                    if details:
+                        await self._add_item_to_cart(details, session_id)
+                        added.append(details["name"])
+                if added:
+                    totals = await self._calculate_cart_totals(session_id)
+                    names = ", ".join(added)
+                    return f"✅ **Added to Cart**: {names}\n\n" + self._format_view_cart_response(await self._get_cart_contents(session_id), totals)
+            if not candidate and (" and " in msg or "," in msg):
+                # Try to extract between 'add' and 'to cart'
+                tmp = msg
+                if "to my cart" in tmp:
+                    tmp = tmp.replace("to my cart", "to cart")
+                if "add" in tmp and "to cart" in tmp:
+                    between = tmp.split("add", 1)[1].split("to cart", 1)[0].strip()
+                    parts = [p.strip() for p in re.split(r",| and ", between) if p.strip()]
+                    added = []
+                    for part in parts:
+                        details = await self._get_product_details(part)
+                        if details:
+                            await self._add_item_to_cart(details, session_id)
+                            added.append(details["name"])
+                    if added:
+                        totals = await self._calculate_cart_totals(session_id)
+                        names = ", ".join(added)
+                        return f"✅ **Added to Cart**: {names}\n\n" + self._format_view_cart_response(await self._get_cart_contents(session_id), totals)
             
+            # Single-item flow
+            product_info = candidate
             if not product_info:
                 return "I need more information to add an item to your cart. Please specify the product name, ID, or description."
-            
-            # Get product details (mock implementation)
             product_details = await self._get_product_details(product_info)
-            
             if not product_details:
                 return f"I couldn't find the product '{product_info}'. Please check the product name or try a different search term."
-            
-            # Add to cart
             cart_item = await self._add_item_to_cart(product_details, session_id)
-            
-            # Calculate updated cart totals
             cart_totals = await self._calculate_cart_totals(session_id)
-            
-            # Format response
-            response = self._format_add_to_cart_response(cart_item, cart_totals)
-            
-            return response
+            return self._format_add_to_cart_response(cart_item, cart_totals)
             
         except Exception as e:
             logger.error("Add to cart failed", error=str(e))
@@ -257,7 +293,7 @@ Always help users make environmentally conscious cart decisions while meeting th
         try:
             # Clear cart
             await self._clear_cart(session_id)
-            
+            # Return empty cart view to confirm
             return "🛒 Your cart has been cleared. You can start fresh with eco-friendly products!"
             
         except Exception as e:
@@ -322,6 +358,11 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
             between = msg.split("add", 1)[1].split("to cart", 1)[0].strip()
             if between:
                 return between
+        # Multi-item support: split by 'and' and try first token
+        if " and " in msg and "to cart" in msg:
+            first = msg.split("add", 1)[1].split("to cart", 1)[0].strip().split(" and ", 1)[0].strip()
+            if first:
+                return first
         # Fallback: next words after add/put/include
         words = msg.split()
         add_indicators = ["add", "put", "include"]
@@ -329,7 +370,7 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
             if word in add_indicators and i + 1 < len(words):
                 product_words = []
                 for w in words[i + 1:i + 5]:
-                    if w in ["to", "cart", "my", "in"]:
+                    if w in ["to", "cart", "my", "in", "and", ","]:
                         break
                     product_words.append(w)
                 if product_words:
@@ -411,10 +452,15 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
             {"id": "mug", "name": "Mug", "price": 8.99, "category": "home", "co2_emissions": 49.6, "eco_score": 9}
         ]
         
+        # Normalize aliases
+        info_key = (product_info or "").strip().lower()
+        if info_key in self.alias_map:
+            info_key = self.alias_map[info_key].lower()
+        
         # Find matching product
         for product in mock_products:
-            if (product_info.lower() in product["name"].lower() or 
-                product_info.lower() in product["id"].lower()):
+            if (info_key in product["name"].lower() or 
+                info_key in product["id"].lower()):
                 return product
         
         return None
@@ -479,8 +525,18 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
     async def _get_cart_contents(self, session_id: str) -> Dict[str, Any]:
         """Get cart contents."""
         cart = cart_store.get_or_create_cart(session_id)
+        # Collapse items by product id to ensure accurate counts
+        collapsed = {}
+        for item in cart["items"]:
+            key = item["product_id"]
+            if key in collapsed:
+                collapsed[key]["quantity"] += item.get("quantity", 1)
+            else:
+                collapsed[key] = item.copy()
+                if "quantity" not in collapsed[key]:
+                    collapsed[key]["quantity"] = 1
         return {
-            "items": cart["items"].copy(),
+            "items": list(collapsed.values()),
             "created_at": cart["created_at"],
             "last_updated": cart["last_updated"]
         }

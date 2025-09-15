@@ -176,7 +176,34 @@ Always help users complete their purchases while minimizing environmental impact
             
             # Get shipping options
             shipping_options = await self._get_shipping_options(cart_contents)
-            
+
+            # Auto-select shipping if user said 'checkout with X'
+            msg = message.lower()
+            auto_pref = None
+            if "checkout with" in msg:
+                if "eco" in msg:
+                    auto_pref = "eco"
+                elif "express" in msg:
+                    auto_pref = "express"
+                elif "ground" in msg:
+                    auto_pref = "ground"
+            if auto_pref:
+                try:
+                    from ..utils import cart_store
+                    cart_store.set_shipping(session_id, auto_pref)
+                except Exception:
+                    pass
+
+            # Persist a checkout snapshot for resilience across session hops
+            try:
+                from ..utils import cart_store
+                cart_store.set_checkout_snapshot(session_id, {
+                    "items": cart_contents.get("items", []),
+                    "order_totals": order_totals
+                })
+            except Exception:
+                pass
+
             # Format checkout response
             response = self._format_checkout_response(order_totals, shipping_options)
             
@@ -201,6 +228,13 @@ Always help users complete their purchases while minimizing environmental impact
                 if filtered_options:
                     shipping_options = filtered_options
             
+            # Persist selection if provided
+            if shipping_preference in [opt["type"] for opt in shipping_options]:
+                try:
+                    from ..utils import cart_store
+                    cart_store.set_shipping(session_id, shipping_preference)
+                except Exception:
+                    pass
             # Format shipping response
             response = self._format_shipping_response(shipping_options)
             
@@ -219,12 +253,38 @@ Always help users complete their purchases while minimizing environmental impact
             if not payment_info:
                 return "I need payment information to process your order. Please provide your payment details."
             
+            # Calculate current totals from shared cart for amount
+            cart_contents = await self._get_cart_contents(session_id)
+            order_totals = await self._calculate_order_totals(cart_contents)
+            amount = order_totals.get("total", 0.0)
+            # Fallback to checkout snapshot if live cart appears empty
+            if amount <= 0 or order_totals.get("item_count", 0) <= 0:
+                try:
+                    from ..utils import cart_store
+                    snapshot = cart_store.get_checkout_snapshot(session_id)
+                    if snapshot:
+                        cart_contents = {"items": snapshot.get("items", [])}
+                        order_totals = snapshot.get("order_totals", order_totals)
+                        amount = order_totals.get("total", 0.0)
+                except Exception:
+                    pass
+            if amount <= 0 or order_totals.get("item_count", 0) <= 0:
+                return "Your cart is empty. Please add some items before proceeding to payment."
+            
             # Process payment
             payment_result = await self._process_payment(payment_info, session_id)
+            payment_result["amount"] = amount
             
             if payment_result["success"]:
                 # Create order
                 order = await self._create_order(session_id, payment_result)
+                # Clear cart after success
+                try:
+                    from ..utils import cart_store
+                    cart_store.clear_cart(session_id)
+                    cart_store.clear_checkout_snapshot(session_id)
+                except Exception:
+                    pass
                 
                 # Format success response
                 response = self._format_payment_success_response(order)

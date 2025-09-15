@@ -183,7 +183,10 @@ Always provide helpful, environmentally conscious responses that guide users tow
         }
 
         # Cart/checkout explicit patterns
-        cart_view_patterns = ["what's in my cart", "whats in my cart", "show cart", "view cart", "cart total"]
+        cart_view_patterns = [
+            "what's in my cart", "whats in my cart", "show cart", "view cart", "cart total",
+            "show my cart"
+        ]
         cart_clear_patterns = ["clear cart", "empty cart"]
         cart_remove_markers = ["remove", "delete", "take out"]
         cart_add_markers = ["add to cart", "add "]
@@ -200,6 +203,24 @@ Always provide helpful, environmentally conscious responses that guide users tow
             intent["intent_type"] = "product_search"
             intent["confidence"] = 0.9
             intent["parameters"] = {"query": message}
+            return intent
+
+        # Explicitly route shipping selection to CheckoutAgent
+        if ("shipping" in message_lower or "ship" in message_lower or "checkout with" in message_lower) and (
+            "choose" in message_lower or "select" in message_lower or "shipping " in message_lower or "with" in message_lower
+        ):
+            intent["primary_agent"] = "CheckoutAgent"
+            intent["intent_type"] = "checkout_process"
+            intent["confidence"] = 0.95
+            # Capture shipping preference keyword if present
+            shipping_pref = None
+            if "eco" in message_lower:
+                shipping_pref = "eco"
+            elif "express" in message_lower:
+                shipping_pref = "express"
+            elif "ground" in message_lower:
+                shipping_pref = "ground"
+            intent["parameters"] = {"shipping_preference": shipping_pref} if shipping_pref else {}
             return intent
 
         # Explicit cart routing
