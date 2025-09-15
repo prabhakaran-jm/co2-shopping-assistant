@@ -22,6 +22,13 @@ spec:
         image: us-central1-docker.pkg.dev/gke10-ai-hackathon/co2-assistant-repo/co2-assistant:latest
         ports:
         - containerPort: 8000
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         env:
         - name: GOOGLE_AI_API_KEY
           valueFrom:

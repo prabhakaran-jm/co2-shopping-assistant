@@ -125,7 +125,7 @@ echo "GOOGLE_PROJECT_ID=your-gcp-project-id" > .env
 echo "GOOGLE_AI_API_KEY=your-gemini-api-key" >> .env
 
 # Deploy development environment (permissive security, basic monitoring)
-./scripts/deploy-environment.sh dev
+./scripts/deploy-app.sh dev
 ```
 
 **Development Features:**
@@ -137,7 +137,7 @@ echo "GOOGLE_AI_API_KEY=your-gemini-api-key" >> .env
 #### **Production Environment (Full Security)**
 ```bash
 # Deploy production environment (strict security, full monitoring)
-./scripts/deploy-environment.sh prod
+./scripts/deploy-app.sh prod
 ```
 
 **Production Features:**
@@ -149,13 +149,36 @@ echo "GOOGLE_AI_API_KEY=your-gemini-api-key" >> .env
 
 ### Alternative Deployment Methods
 
+#### **Option 0: Direct kubectl Deployment (Quick Start)**
+```bash
+# 1. Create namespaces
+kubectl apply -f k8s/namespaces.yaml
+
+# 2. Create secrets (replace with your actual values)
+kubectl create secret generic co2-assistant-secrets \
+  --from-literal=google-ai-api-key="YOUR_GEMINI_API_KEY" \
+  --from-literal=google-project-id="YOUR_PROJECT_ID" \
+  -n co2-assistant
+
+# 3. Deploy the application
+kubectl apply -f k8s/co2-assistant-deployment.yaml
+kubectl apply -f k8s/ob-proxy.yaml
+kubectl apply -f k8s/hpa.yaml
+kubectl apply -f k8s/managed-certificate.yaml
+kubectl apply -f k8s/https-ingress.yaml
+
+# 4. Verify deployment
+kubectl get pods -n co2-assistant
+kubectl port-forward svc/co2-assistant-service 8000:80 -n co2-assistant
+```
+
 #### **Option 1: Environment-Specific Deployment (Recommended)**
 ```bash
 # Development environment (cost-optimized, permissive security)
-./scripts/deploy-environment.sh dev
+./scripts/deploy-app.sh dev
 
 # Production environment (full security, comprehensive monitoring)
-./scripts/deploy-environment.sh prod
+./scripts/deploy-app.sh prod
 ```
 
 #### **Option 2: Complete Infrastructure (Basic)**
