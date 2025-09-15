@@ -193,6 +193,10 @@ Always help users complete their purchases while minimizing environmental impact
                     cart_store.set_shipping(session_id, auto_pref)
                 except Exception:
                     pass
+                
+                # Update response to show total CO2 including shipping
+                response = self._format_checkout_response_with_shipping(order_totals, shipping_options, auto_pref)
+                return response
 
             # Persist a checkout snapshot for resilience across session hops
             try:
@@ -291,8 +295,18 @@ Always help users complete their purchases while minimizing environmental impact
             payment_result["amount"] = amount
             
             if payment_result["success"]:
+                # Get stored shipping preference from checkout
+                shipping_method = "eco"  # Default
+                try:
+                    from ..utils import cart_store
+                    stored_shipping = cart_store.get_shipping(session_id)
+                    if stored_shipping:
+                        shipping_method = stored_shipping
+                except Exception:
+                    pass
+                
                 # Create order
-                order = await self._create_order(session_id, payment_result)
+                order = await self._create_order(session_id, payment_result, shipping_method)
                 # Clear cart after success
                 try:
                     from ..utils import cart_store
@@ -408,7 +422,7 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
             "item_count": item_count,
             "tax": subtotal * 0.08,  # 8% tax
             "shipping_cost": 0.0,  # Will be calculated based on shipping option
-            "total": subtotal + (subtotal * 0.08)
+            "total": subtotal + (subtotal * 0.08)  # Will add shipping when selected
         }
     
     async def _get_shipping_options(self, cart_contents: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -507,13 +521,19 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         
         return payment_result
     
-    async def _create_order(self, session_id: str, payment_result: Dict[str, Any]) -> Dict[str, Any]:
+    
+    async def _create_order(self, session_id: str, payment_result: Dict[str, Any], shipping_method: str = "eco") -> Dict[str, Any]:
         """Create order after successful payment."""
         order_id = f"ORD_{uuid.uuid4().hex[:8].upper()}"
         
         # Get cart contents
         cart_contents = await self._get_cart_contents(session_id)
         order_totals = await self._calculate_order_totals(cart_contents)
+        
+        # Add shipping cost to total
+        shipping_cost = self.shipping_options.get(shipping_method, {}).get("cost", 0.0)
+        order_totals["shipping_cost"] = shipping_cost
+        order_totals["total"] = order_totals["total"] + shipping_cost
         
         # Create order
         order = {
@@ -523,7 +543,7 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
             "totals": order_totals,
             "payment": payment_result,
             "shipping": {
-                "method": "eco",  # Default to eco-friendly
+                "method": shipping_method,
                 "address": "Default Address",  # Mock address
                 "tracking_number": f"TRK_{uuid.uuid4().hex[:8].upper()}"
             },
@@ -607,6 +627,46 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         
         return response
     
+    def _format_checkout_response_with_shipping(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]], selected_shipping: str) -> str:
+        """Format checkout response with selected shipping method."""
+        # Find the selected shipping option
+        selected_option = None
+        for option in shipping_options:
+            if option['type'] == selected_shipping:
+                selected_option = option
+                break
+        
+        if not selected_option:
+            return self._format_checkout_response(order_totals, shipping_options)
+        
+        # Calculate total CO2 including shipping
+        total_co2 = order_totals['total_co2'] + selected_option['co2_emissions']
+        
+        response = f"🛒 **Ready to Checkout**\n\n"
+        response += f"📦 **Order Summary**:\n"
+        response += f"• Items: {order_totals['item_count']}\n"
+        response += f"• Subtotal: ${order_totals['subtotal']:.2f}\n"
+        response += f"• Tax: ${order_totals['tax']:.2f}\n"
+        response += f"• CO2 Impact: {order_totals['total_co2']:.1f} kg\n\n"
+        
+        response += f"🚚 **Selected Shipping**: {selected_option['name']}\n"
+        response += f"• Cost: ${selected_option['cost']:.2f}\n"
+        response += f"• CO2: {selected_option['co2_emissions']:.1f} kg ({selected_option['eco_rating']} Impact)\n"
+        response += f"• Delivery: {selected_option['delivery_days']} days\n\n"
+        
+        response += f"🌍 **Total CO2**: {total_co2:.1f} kg\n"
+        response += f"💰 **Total Cost**: ${order_totals['subtotal'] + order_totals['tax'] + selected_option['cost']:.2f}\n\n"
+        
+        # Contextual message based on shipping choice
+        if selected_shipping == "eco":
+            response += f"🌱 Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
+        elif selected_shipping == "ground":
+            response += f"🚚 Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
+        else:  # express
+            response += f"⚡ Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
+        
+        return response
+    
     def _format_shipping_response(self, shipping_options: List[Dict[str, Any]]) -> str:
         """Format shipping options response."""
         response = f"🚚 **Available Shipping Options**\n\n"
@@ -628,7 +688,12 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         response = f"✅ **Payment Successful!**\n\n"
         response += f"🎉 **Order Confirmed**: {order['order_id']}\n"
         response += f"💰 **Total Paid**: ${order['totals']['total']:.2f}\n"
-        response += f"🌍 **Total CO2**: {order['totals']['total_co2']:.1f} kg\n"
+        # Calculate total CO2 including shipping
+        shipping_method = order['shipping']['method']
+        shipping_co2 = self.shipping_options.get(shipping_method, {}).get('co2_per_mile', 0.0) * 500  # Mock 500 miles
+        total_co2_with_shipping = order['totals']['total_co2'] + shipping_co2
+        
+        response += f"🌍 **Total CO2**: {total_co2_with_shipping:.1f} kg\n"
         response += f"📦 **Items**: {order['totals']['item_count']}\n\n"
         
         response += f"🚚 **Shipping Details**:\n"
@@ -641,7 +706,13 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         response += f"• Track your order with: '{order['order_id']}'\n"
         response += f"• Estimated delivery: {order['estimated_delivery'].strftime('%B %d, %Y')}\n\n"
         
-        response += f"🌱 **Thank you for choosing environmentally conscious shopping!**"
+        # Contextual thank you message based on shipping method
+        if shipping_method == "eco":
+            response += f"🌱 **Thank you for choosing environmentally conscious shopping!**"
+        elif shipping_method == "ground":
+            response += f"🚚 **Thank you for your order! Your package will arrive via ground shipping.**"
+        else:  # express
+            response += f"⚡ **Thank you for your order! Your package will arrive via express shipping.**"
         
         return response
     
@@ -724,7 +795,9 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         payment_result = await self._process_payment(payment_info, session_id)
         
         if payment_result["success"]:
-            order = await self._create_order(session_id, payment_result)
+            # Default to eco-friendly shipping for task-based payments
+            shipping_method = "eco"
+            order = await self._create_order(session_id, payment_result, shipping_method)
             return {
                 "success": True,
                 "order": order,

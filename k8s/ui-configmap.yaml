@@ -348,11 +348,90 @@ data:
         }
         
         extractAndUpdateCO2Savings(response) {
-            const co2Match = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]/i);
-            if (co2Match) {
-                const co2Amount = parseFloat(co2Match[1]);
-                this.totalCO2Saved += co2Amount;
+            // 1) Reset on successful checkout - be more specific to avoid false positives
+            if (response.includes('Payment Successful!') && response.includes('Order Confirmed')) {
+                this.totalCO2Saved = 0;
                 this.updateCO2Display();
+                return;
+            }
+
+            // 2) CO2 Impact from cart/checkout: "🌍 **CO2 Impact**: 44.5 kg CO2" or "🌍 **Total CO2**: 93.5 kg"
+            // Handle both markdown (**bold**) and HTML (<strong>bold</strong>) formats
+            const co2ImpactMatch = response.match(/🌍\s*(?:\*\*CO2\s+Impact\*\*|<strong>CO2\s+Impact<\/strong>|\*\*Total\s+CO2\*\*|<strong>Total\s+CO2<\/strong>):\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (co2ImpactMatch) {
+                const co2Value = parseFloat(co2ImpactMatch[1]);
+                if (!Number.isNaN(co2Value)) {
+                    this.totalCO2Saved = Math.max(0, co2Value);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+            
+            // 2b) Simpler pattern for CO2 Impact: "🌍 **CO2 Impact**: 44.5 kg"
+            const simpleCo2Match = response.match(/🌍\s*\*\*CO2\s+Impact\*\*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (simpleCo2Match) {
+                const co2Value = parseFloat(simpleCo2Match[1]);
+                if (!Number.isNaN(co2Value)) {
+                    this.totalCO2Saved = Math.max(0, co2Value);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+            
+            // 2c) Pattern for Total CO2: "🌍 **Total CO2**: 93.5 kg"
+            const totalCo2Match = response.match(/🌍\s*\*\*Total\s+CO2\*\*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (totalCo2Match) {
+                const co2Value = parseFloat(totalCo2Match[1]);
+                if (!Number.isNaN(co2Value)) {
+                    this.totalCO2Saved = Math.max(0, co2Value);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+            
+            // 2d) Pattern for Cart Totals: "• **Total CO2**: 93.5 kg"
+            const cartTotalMatch = response.match(/•\s*\*\*Total\s+CO2\*\*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (cartTotalMatch) {
+                const co2Value = parseFloat(cartTotalMatch[1]);
+                if (!Number.isNaN(co2Value)) {
+                    this.totalCO2Saved = Math.max(0, co2Value);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+
+            // 3) Explicit savings statement: "44.5 kg CO₂ saved"
+            const savedMatch = response.match(/(\d+(?:\.\d+)?)\s*kg\s*CO[₂2]\s*saved/i);
+            if (savedMatch) {
+                const saved = parseFloat(savedMatch[1]);
+                if (!Number.isNaN(saved)) {
+                    this.totalCO2Saved = Math.max(0, saved);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+
+            // 4) Multi-item savings phrasing (ProductDiscoveryAgent):
+            //    "Estimated savings choosing efficient options: 1.2kg per item"
+            const perItemSavings = response.match(/Estimated\s+savings\s+choosing\s+efficient\s+options:\s*(\d+(?:\.\d+)?)\s*kg\s*per\s*item/i);
+            if (perItemSavings) {
+                const perItem = parseFloat(perItemSavings[1]);
+                if (!Number.isNaN(perItem)) {
+                    this.totalCO2Saved = Math.max(0, perItem);
+                    this.updateCO2Display();
+                    return;
+                }
+            }
+            
+            // 5) Try simpler patterns for multi-item
+            const simplePerItem = response.match(/(\d+(?:\.\d+)?)\s*kg\s*per\s*item/i);
+            if (simplePerItem) {
+                const perItem = parseFloat(simplePerItem[1]);
+                if (!Number.isNaN(perItem)) {
+                    this.totalCO2Saved = Math.max(0, perItem);
+                    this.updateCO2Display();
+                    return;
+                }
             }
         }
         
