@@ -55,13 +55,14 @@ class CO2ShoppingAssistant {
     }
     
     async callAPI(message) {
+        const sid = this.getCookie ? this.getCookie('assistant_sid') : null;
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'include',
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message: message, session_id: sid || undefined })
         });
         
         if (!response.ok) {
@@ -70,6 +71,13 @@ class CO2ShoppingAssistant {
         
         const data = await response.json();
         return data.response || 'No response received';
+    }
+
+    getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return null;
     }
     
     addMessage(sender, content) {

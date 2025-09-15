@@ -245,10 +245,25 @@ Always help users complete their purchases while minimizing environmental impact
             return "I encountered an error while processing shipping options. Please try again."
     
     async def _handle_payment_process(self, message: str, session_id: str) -> str:
-        """Handle payment process requests."""
+        """Handle payment process requests.
+
+        Accepts either a tokenized payment reference (e.g., "payment_token: tok_123")
+        or verbose card details parsed by `_extract_payment_info`.
+        """
         try:
-            # Extract payment information
-            payment_info = await self._extract_payment_info(message)
+            # Prefer a tokenized payment reference if provided
+            payment_info: Optional[Dict[str, Any]] = None
+            try:
+                import re
+                token_match = re.search(r'(?:payment_token|token)\s*:\s*(\S+)', message, re.IGNORECASE)
+                if token_match:
+                    payment_info = {"token": token_match.group(1)}
+            except Exception:
+                pass
+
+            # Fallback to parsing card details
+            if not payment_info:
+                payment_info = await self._extract_payment_info(message)
             
             if not payment_info:
                 return "I need payment information to process your order. Please provide your payment details."

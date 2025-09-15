@@ -242,9 +242,10 @@ async def chat_endpoint(payload: Dict[str, Any], request: Request):
             json_resp.set_cookie(
                 key="assistant_sid",
                 value=session_id,
-                httponly=False,
-                secure=False,
+                httponly=True,
+                secure=(request.url.scheme == "https"),
                 samesite="Lax",
+                path="/",
                 max_age=60 * 60 * 24 * 7
             )
         return json_resp
