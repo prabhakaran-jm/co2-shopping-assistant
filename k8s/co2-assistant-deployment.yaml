@@ -24,6 +24,8 @@ spec:
         - containerPort: 8000
         securityContext:
           runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           capabilities:
@@ -81,13 +83,3 @@ spec:
     targetPort: 8000
     protocol: TCP
   type: ClusterIP
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: co2-assistant-secrets
-  namespace: co2-assistant
-type: Opaque
-data:
-  google-ai-api-key: ""  # Base64 encoded API key
-  google-project-id: ""   # Base64 encoded project ID

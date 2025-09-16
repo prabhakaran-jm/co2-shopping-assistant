@@ -28,10 +28,10 @@ COPY src/ ./src/
 COPY k8s/ ./k8s/
 COPY scripts/ ./scripts/
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-USER app
+# Create non-root user with a stable numeric UID/GID
+RUN useradd --uid 1000 --create-home --shell /bin/bash app && \
+    chown -R 1000:1000 /app
+USER 1000:1000
 
 # Expose port
 EXPOSE 8000

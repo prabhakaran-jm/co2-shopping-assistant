@@ -52,14 +52,6 @@ structlog.configure(
 
 logger = structlog.get_logger(__name__)
 
-# Prometheus metrics - Clear registry to avoid duplicate registration issues
-from prometheus_client import REGISTRY, CollectorRegistry
-
-# Clear any existing metrics to prevent duplicate registration
-# Remove all collectors from the default registry
-for collector in list(REGISTRY._collector_to_names.keys()):
-    REGISTRY.unregister(collector)
-
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
 REQUEST_DURATION = Histogram('http_request_duration_seconds', 'HTTP request duration', ['method', 'endpoint'])
 ACTIVE_CONNECTIONS = Gauge('active_connections', 'Number of active connections')
@@ -150,6 +142,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ensure latest UI script is always fetched (avoid stale cached JS during demo)
+@app.middleware("http")
+async def no_cache_for_script_js(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") and "script.js" in path:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="src/ui"), name="static")
@@ -298,7 +301,7 @@ if __name__ == "__main__":
     # Disable reload in production to prevent metric registration issues
     reload = os.getenv("ENVIRONMENT", "dev").lower() == "dev"
     uvicorn.run(
-        "src.main:app",
+        app,
         host="0.0.0.0",
         port=port,
         reload=reload,

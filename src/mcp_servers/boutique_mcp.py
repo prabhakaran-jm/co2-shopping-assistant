@@ -54,14 +54,47 @@ class BoutiqueMCPServer:
         """
         self.boutique_base_url = boutique_base_url
         self.running = False
-        
-        # Service endpoints (mixed gRPC and HTTP)
+
+        # Allow endpoint configuration via environment variables. If an HTTP proxy base is
+        # provided (e.g., ob-proxy), callers can point HTTP services there.
+        product_catalog_addr = os.getenv(
+            "PRODUCT_CATALOG_ADDR",
+            "productcatalogservice.online-boutique.svc.cluster.local:3550",
+        )
+        cartservice_addr = os.getenv(
+            "CARTSERVICE_ADDR",
+            "http://cartservice.online-boutique.svc.cluster.local:7070",
+        )
+        checkoutservice_addr = os.getenv(
+            "CHECKOUTSERVICE_ADDR",
+            "http://checkoutservice.online-boutique.svc.cluster.local:5050",
+        )
+        recommendation_addr = os.getenv(
+            "RECOMMENDATION_SERVICE_ADDR",
+            "http://recommendationservice.online-boutique.svc.cluster.local:8080",
+        )
+        currency_addr = os.getenv(
+            "CURRENCYSERVICE_ADDR",
+            "http://currencyservice.online-boutique.svc.cluster.local:7000",
+        )
+
+        # Optional proxy base (e.g., http://ob-proxy.<ns>.svc.cluster.local)
+        proxy_base = os.getenv("OB_PROXY_BASE_URL") or os.getenv("BOUTIQUE_BASE_URL")
+        if proxy_base:
+            # If a proxy is provided, prefer routing HTTP services through it when not
+            # explicitly overridden above. We keep product_catalog gRPC as-is.
+            cartservice_addr = os.getenv("CARTSERVICE_ADDR", f"{proxy_base}/cartservice")
+            checkoutservice_addr = os.getenv("CHECKOUTSERVICE_ADDR", f"{proxy_base}/checkoutservice")
+            recommendation_addr = os.getenv("RECOMMENDATION_SERVICE_ADDR", f"{proxy_base}/recommendationservice")
+            currency_addr = os.getenv("CURRENCYSERVICE_ADDR", f"{proxy_base}/currencyservice")
+
+        # Service endpoints (may be gRPC host:port or HTTP URLs)
         self.endpoints = {
-            "product_catalog": "productcatalogservice.online-boutique.svc.cluster.local:3550",  # gRPC
-            "cart_service": "http://cartservice.online-boutique.svc.cluster.local:7070",  # HTTP
-            "checkout_service": "http://checkoutservice.online-boutique.svc.cluster.local:5050",  # HTTP
-            "recommendation_service": "http://recommendationservice.online-boutique.svc.cluster.local:8080",  # HTTP
-            "currency_service": "http://currencyservice.online-boutique.svc.cluster.local:7000"  # HTTP
+            "product_catalog": product_catalog_addr,  # gRPC
+            "cart_service": cartservice_addr,        # HTTP or proxy HTTP
+            "checkout_service": checkoutservice_addr,  # HTTP or proxy HTTP
+            "recommendation_service": recommendation_addr,  # HTTP or proxy HTTP
+            "currency_service": currency_addr,       # HTTP or proxy HTTP
         }
         
         # HTTP client
@@ -88,22 +121,35 @@ class BoutiqueMCPServer:
         """Test connectivity to boutique services."""
         for service_name, endpoint in self.endpoints.items():
             try:
-                if service_name == "product_catalog":
-                    # Test gRPC connectivity
+                is_http = isinstance(endpoint, str) and endpoint.startswith("http")
+                if service_name == "product_catalog" and not is_http:
+                    # Test gRPC connectivity (preferred for product catalog)
                     try:
                         async with aio.insecure_channel(endpoint) as ch:
                             stub = pb2_grpc.ProductCatalogServiceStub(ch)
                             await stub.ListProducts(pb2.Empty())
                         logger.info("gRPC service connectivity test passed", service=service_name)
                     except Exception as grpc_error:
-                        logger.warning("gRPC service connectivity test failed", service=service_name, error=str(grpc_error))
-                else:
-                    # Test HTTP connectivity
-                    response = await self.client.get(f"{endpoint}/health", timeout=5.0)
+                        logger.warning(
+                            "gRPC service connectivity test failed",
+                            service=service_name,
+                            error=str(grpc_error),
+                        )
+                elif is_http:
+                    # Test HTTP connectivity when endpoint is an HTTP URL (e.g., via proxy)
+                    health_url = f"{endpoint.rstrip('/')}/health"
+                    response = await self.client.get(health_url, timeout=5.0)
                     if response.status_code == 200:
                         logger.info("HTTP service connectivity test passed", service=service_name)
                     else:
-                        logger.warning("HTTP service connectivity test failed", service=service_name, status=response.status_code)
+                        logger.warning(
+                            "HTTP service connectivity test failed",
+                            service=service_name,
+                            status=response.status_code,
+                        )
+                else:
+                    # Unknown scheme; skip active probing
+                    logger.info("Skipping connectivity probe for endpoint with unknown scheme", service=service_name, endpoint=endpoint)
             except Exception as e:
                 logger.warning("Service connectivity test failed", service=service_name, error=str(e))
     
@@ -262,22 +308,23 @@ class BoutiqueMCPServer:
     
     async def get_product_categories(self) -> List[str]:
         """
-        Get list of available product categories.
+        Get list of available product categories by aggregating from ListProducts (gRPC).
         
         Returns:
             List of category names
         """
         try:
-            response = await self.client.get(
-                f"{self.endpoints['product_catalog']}/categories"
-            )
-            response.raise_for_status()
-            
-            categories = response.json().get("categories", [])
-            
-            logger.info("Product categories retrieved", count=len(categories))
-            return categories
-            
+            endpoint = self.endpoints["product_catalog"]
+            async with aio.insecure_channel(endpoint) as ch:
+                stub = pb2_grpc.ProductCatalogServiceStub(ch)
+                resp = await stub.ListProducts(pb2.Empty())
+                categories_set = set()
+                for p in resp.products:
+                    for c in p.categories:
+                        categories_set.add(c)
+                categories = sorted(categories_set)
+                logger.info("Product categories aggregated", count=len(categories))
+                return categories
         except Exception as e:
             logger.error("Product categories retrieval failed", error=str(e))
             return []
@@ -633,26 +680,37 @@ class BoutiqueMCPServer:
             # Check each service endpoint
             for service_name, endpoint in self.endpoints.items():
                 try:
-                    if service_name == "product_catalog":
-                        # Test gRPC connectivity
+                    is_http = isinstance(endpoint, str) and endpoint.startswith("http")
+                    if service_name == "product_catalog" and not is_http:
+                        # gRPC health via ListProducts
                         try:
                             async with aio.insecure_channel(endpoint) as ch:
                                 stub = pb2_grpc.ProductCatalogServiceStub(ch)
                                 await stub.ListProducts(pb2.Empty())
-                            health_status["services"][service_name] = {
-                                "status": "healthy"
-                            }
+                            health_status["services"][service_name] = {"status": "healthy"}
                         except Exception as grpc_error:
                             health_status["services"][service_name] = {
                                 "status": "unhealthy",
-                                "error": str(grpc_error)
+                                "error": str(grpc_error),
+                            }
+                    elif is_http:
+                        # HTTP health when routed via proxy
+                        try:
+                            health_url = f"{endpoint.rstrip('/')}/health"
+                            response = await self.client.get(health_url, timeout=5.0)
+                            health_status["services"][service_name] = {
+                                "status": "healthy" if response.status_code == 200 else "unhealthy",
+                                "status_code": response.status_code,
+                            }
+                        except Exception as http_err:
+                            health_status["services"][service_name] = {
+                                "status": "unhealthy",
+                                "error": str(http_err),
                             }
                     else:
-                        # Test HTTP connectivity
-                        response = await self.client.get(f"{endpoint}/health", timeout=5.0)
                         health_status["services"][service_name] = {
-                            "status": "healthy" if response.status_code == 200 else "unhealthy",
-                            "status_code": response.status_code
+                            "status": "unknown",
+                            "note": "no probe for non-HTTP endpoint",
                         }
                 except Exception as e:
                     health_status["services"][service_name] = {
