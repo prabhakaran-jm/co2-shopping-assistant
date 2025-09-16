@@ -1,12 +1,12 @@
 class CO2ShoppingAssistant {
     constructor() {
-        console.log('UI script version: v2.1');
         this.chatInput = document.getElementById('chat-input');
         this.sendButton = document.getElementById('send-button');
         this.chatMessages = document.getElementById('chat-messages');
         this.co2SavingsElement = document.getElementById('co2-savings');
         // Start at 0; do not persist across sessions to avoid stale values
         this.totalCO2Saved = 0;
+        this.co2Label = 'CO₂';
         this.lastUserMessage = '';
         this.retry = { count: 0, max: 3, cooldownMs: 250, inFlight: false };
         
@@ -47,9 +47,7 @@ class CO2ShoppingAssistant {
         
         try {
             const response = await this.callAPI(message);
-            console.log('Raw API response:', response);
             const messageText = response.response?.response || response.response || response;
-            console.log('Extracted messageText:', messageText);
             const assistantEl = this.addMessage('assistant', messageText);
             // Auto-retry transient empty-cart states for checkout/payment flows
             if (this.autoRetryIfCartEmpty(messageText, assistantEl)) {
@@ -58,7 +56,7 @@ class CO2ShoppingAssistant {
             this.extractAndUpdateCO2Savings(messageText);
         } catch (error) {
             this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-            console.error('Error:', error);
+            // swallow console noise in production UI
         } finally {
             this.sendButton.disabled = false;
         }
@@ -145,18 +143,13 @@ class CO2ShoppingAssistant {
     }
     
     extractAndUpdateCO2Savings(response) {
-        // Debug: log the response to see what we're working with
-        console.log('=== CO2 Extraction Debug ===');
-        console.log('Full response:', response);
-        console.log('Response length:', response.length);
-
         // Normalize: remove markdown bold so regex matches labels like **Total CO2**
         const text = response.replace(/\*\*/g, '');
 
         // 1) Reset after payment confirmation
         if (/Payment\s+Successful/i.test(text) || /Order\s+Confirmed/i.test(text)) {
-            console.log('Detected payment completion, resetting badge to 0');
             this.totalCO2Saved = 0;
+            this.co2Label = 'CO₂';
             this.updateCO2Display();
             return;
         }
@@ -164,10 +157,10 @@ class CO2ShoppingAssistant {
         // 2) Prefer Total CO2 if present, then Shipping CO2, then CO2 Impact
         const totalCo2Match = text.match(/(?:🌍\s*)?Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         if (totalCo2Match) {
-            console.log('Found Total CO2:', totalCo2Match[1]);
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 this.totalCO2Saved = Math.max(0, co2Value);
+                this.co2Label = 'Total CO₂';
                 this.updateCO2Display();
                 return;
             }
@@ -177,19 +170,19 @@ class CO2ShoppingAssistant {
         const shippingCo2Match = text.match(/\u2022\s*CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         const bulletTotalMatch = text.match(/\u2022\s*Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         if (shippingCo2Match) {
-            console.log('Found shipping CO2:', shippingCo2Match[1]);
             const co2Value = parseFloat(shippingCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 this.totalCO2Saved = Math.max(0, co2Value);
+                this.co2Label = 'Shipping CO₂';
                 this.updateCO2Display();
                 return;
             }
         }
         if (bulletTotalMatch) {
-            console.log('Found bullet Total CO2:', bulletTotalMatch[1]);
             const co2Value = parseFloat(bulletTotalMatch[1]);
             if (!Number.isNaN(co2Value)) {
                 this.totalCO2Saved = Math.max(0, co2Value);
+                this.co2Label = 'Total CO₂';
                 this.updateCO2Display();
                 return;
             }
@@ -198,10 +191,10 @@ class CO2ShoppingAssistant {
         // 2c) Fallback: CO2 Impact line
         const impactCo2Match = text.match(/(?:🌍\s*)?CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         if (impactCo2Match) {
-            console.log('Found CO2 Impact:', impactCo2Match[1]);
             const co2Value = parseFloat(impactCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 this.totalCO2Saved = Math.max(0, co2Value);
+                this.co2Label = 'Product CO₂';
                 this.updateCO2Display();
                 return;
             }
@@ -244,13 +237,12 @@ class CO2ShoppingAssistant {
             }
         }
         
-        console.log('No CO2 patterns matched');
-        console.log('=== End Debug ===');
     }
     
     updateCO2Display() {
         if (this.co2SavingsElement) {
-            this.co2SavingsElement.textContent = `${this.totalCO2Saved.toFixed(1)} kg CO₂ saved`;
+            const label = this.co2Label || 'CO₂';
+            this.co2SavingsElement.textContent = `${label}: ${this.totalCO2Saved.toFixed(1)} kg`;
             this.co2SavingsElement.style.transform = 'scale(1.1)';
             setTimeout(() => {
                 this.co2SavingsElement.style.transform = 'scale(1)';
