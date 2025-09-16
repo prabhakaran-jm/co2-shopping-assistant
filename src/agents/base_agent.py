@@ -8,7 +8,15 @@ It implements common functionality and interfaces required by the ADK framework.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import os
+import asyncio
 import structlog
+
+# Optional Gemini client import (guarded)
+try:
+    import google.generativeai as genai  # type: ignore
+except Exception:  # pragma: no cover - optional dependency at runtime
+    genai = None  # type: ignore
 
 logger = structlog.get_logger(__name__)
 
@@ -66,6 +74,17 @@ class BaseAgent(ABC):
             model=self.model,
             tools_count=len(self.tools)
         )
+        
+        # Configure Gemini client once per process if available and API key provided
+        try:
+            if genai is not None:
+                api_key = os.getenv("GOOGLE_AI_API_KEY")
+                if api_key and not getattr(genai, "_co2_configured", False):
+                    genai.configure(api_key=api_key)
+                    setattr(genai, "_co2_configured", True)
+        except Exception:
+            # Non-fatal: continue without LLM
+            pass
     
     def _get_default_instruction(self) -> str:
         """Get default instruction for the agent."""
@@ -179,6 +198,27 @@ Provide clear, helpful responses and explain the environmental benefits of your 
         """
         return self.metrics.copy()
     
+    async def _llm_generate_text(self, system_instruction: str, user_input: str, model: Optional[str] = None) -> Optional[str]:
+        """
+        Generate text using Gemini if available. Returns None if LLM unavailable.
+        """
+        if genai is None:
+            return None
+        api_key = os.getenv("GOOGLE_AI_API_KEY")
+        if not api_key:
+            return None
+        try:
+            selected_model = model or self.model or "gemini-2.0-flash"
+            llm = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
+            # Call in thread to avoid blocking event loop (SDK is sync)
+            response = await asyncio.to_thread(llm.generate_content, user_input)
+            text = getattr(response, "text", None)
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        except Exception:
+            return None
+        return None
+
     def _update_metrics(self, success: bool, response_time: float):
         """
         Update agent metrics.

@@ -117,6 +117,44 @@ data:
         proxy_connect_timeout 30s;
         proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;
       }
+
+      # Proxy Online Boutique backend services for the assistant
+
+      # Cart service (HTTP)
+      location /cartservice/ {
+        proxy_pass http://cartservice.online-boutique.svc.cluster.local:80/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+
+      # Checkout service (HTTP)
+      location /checkoutservice/ {
+        proxy_pass http://checkoutservice.online-boutique.svc.cluster.local:80/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+
+      # Recommendation service (HTTP)
+      location /recommendationservice/ {
+        proxy_pass http://recommendationservice.online-boutique.svc.cluster.local:80/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+
+      # Currency service (HTTP)
+      location /currencyservice/ {
+        proxy_pass http://currencyservice.online-boutique.svc.cluster.local:80/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
     }
 ---
 apiVersion: v1

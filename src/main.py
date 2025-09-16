@@ -26,6 +26,7 @@ from .agents.co2_calculator_agent import CO2CalculatorAgent
 from .agents.cart_management_agent import CartManagementAgent
 from .agents.checkout_agent import CheckoutAgent
 from .agents.comparison_agent import ComparisonAgent
+from .agents.adk_agent import ADKEcoAgent
 from .mcp_servers.boutique_mcp import BoutiqueMCPServer
 from .mcp_servers.co2_mcp import CO2MCPServer
 from .mcp_servers.comparison_mcp import ComparisonMCPServer
@@ -94,6 +95,15 @@ async def lifespan(app: FastAPI):
         agents["CartManagementAgent"] = CartManagementAgent()
         agents["CheckoutAgent"] = CheckoutAgent()
         agents["ComparisonAgent"] = ComparisonAgent(comparison_mcp_server=mcp_servers["comparison"])
+        
+        # Initialize ADK-based agent (optional)
+        enable_adk = os.getenv("ENABLE_ADK_AGENT", "true").lower() in ("true", "1", "yes")
+        if enable_adk:
+            logger.info("Initializing ADK Eco Agent...")
+            agents["ADKEcoAgent"] = ADKEcoAgent(boutique_mcp_server=mcp_servers["boutique"])
+        else:
+            logger.info("ADK agent disabled via environment variable")
+        
         agents["host"] = HostAgent(sub_agents=list(agents.values()))
         
         # Register all agents with A2A protocol
@@ -178,17 +188,29 @@ async def api_info():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with fast timeout for readiness probes."""
     try:
-        # Check if all agents are healthy
+        # Check if all agents are healthy (fast)
         agent_status = {}
         for name, agent in agents.items():
-            agent_status[name] = await agent.health_check()
+            try:
+                # Add timeout to prevent hanging
+                agent_status[name] = await asyncio.wait_for(agent.health_check(), timeout=2.0)
+            except asyncio.TimeoutError:
+                agent_status[name] = {"status": "timeout", "error": "Health check timed out"}
+            except Exception as e:
+                agent_status[name] = {"status": "error", "error": str(e)}
         
-        # Check if all MCP servers are healthy
+        # Check MCP servers with timeout (fast)
         mcp_status = {}
         for name, server in mcp_servers.items():
-            mcp_status[name] = await server.health_check()
+            try:
+                # Add timeout to prevent hanging on connectivity checks
+                mcp_status[name] = await asyncio.wait_for(server.health_check(), timeout=2.0)
+            except asyncio.TimeoutError:
+                mcp_status[name] = {"status": "timeout", "error": "Health check timed out"}
+            except Exception as e:
+                mcp_status[name] = {"status": "error", "error": str(e)}
         
         return {
             "status": "healthy",
@@ -271,6 +293,37 @@ async def get_agent_status(agent_name: str):
         "agent": agent_name,
         "status": status
     }
+
+
+@app.post("/api/adk-chat")
+async def adk_chat_endpoint(payload: Dict[str, Any], request: Request):
+    """ADK-specific chat endpoint for testing ADK agent functionality."""
+    try:
+        user_message = payload.get("message", "")
+        session_id = payload.get("session_id", f"adk_sid_{asyncio.get_event_loop().time()}")
+        
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        logger.info("Processing ADK chat message", message=user_message, session_id=session_id)
+        
+        # Route to ADK agent
+        if "ADKEcoAgent" not in agents:
+            raise HTTPException(status_code=503, detail="ADK agent not available")
+        
+        adk_agent = agents["ADKEcoAgent"]
+        response = await adk_agent.process_message(user_message, session_id)
+        
+        return {
+            "response": response,
+            "session_id": session_id,
+            "agent_type": "ADK",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+    except Exception as e:
+        logger.error("ADK chat processing failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/metrics")

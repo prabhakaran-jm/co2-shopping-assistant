@@ -532,7 +532,14 @@ Always provide helpful, environmentally conscious responses that guide users tow
         
         if not primary_agent_name or primary_agent_name not in self.sub_agents:
             print(f"HOST: Agent not found, using fallback response")
-            # Fallback to general response
+            # Fallback to general response (try LLM summarization first)
+            llm_response = await self._llm_generate_text(
+                system_instruction=self.instruction,
+                user_input=f"User said: '{message}'. Provide a concise, helpful, sustainable-shopping response.",
+                model=self.model
+            )
+            if isinstance(llm_response, str) and llm_response.strip():
+                return llm_response
             return await self._generate_fallback_response(message, context)
         
         try:
@@ -570,6 +577,16 @@ Always provide helpful, environmentally conscious responses that guide users tow
                 return response["response"]
             
             # Fallback for simple string responses
+            if isinstance(response, str) and response.strip():
+                return response
+            # As a final polish, attempt LLM formulation over raw response/context
+            llm_response = await self._llm_generate_text(
+                system_instruction=self.instruction,
+                user_input=f"User: {message}\nAgent raw result: {response}\nCraft a clear, actionable reply with eco tips.",
+                model=self.model
+            )
+            if isinstance(llm_response, str) and llm_response.strip():
+                return llm_response
             return str(response)
                 
         except Exception as e:
@@ -593,6 +610,18 @@ Always provide helpful, environmentally conscious responses that guide users tow
         Returns:
             Fallback response
         """
+        # Try LLM-crafted fallback first
+        llm_response = await self._llm_generate_text(
+            system_instruction=self.instruction,
+            user_input=(
+                "The router could not select a specialized agent."
+                " Provide a short, friendly prompt asking clarifying questions,"
+                " and list 3 example requests related to sustainable shopping."
+            ),
+            model=self.model
+        )
+        if isinstance(llm_response, str) and llm_response.strip():
+            return llm_response
         return f"""I understand you're looking for help with shopping. I'm your CO2-Aware Shopping Assistant, designed to help you make environmentally conscious purchasing decisions.
 
 I can help you with:

@@ -398,3 +398,7 @@ class ComparisonMCPServer:
             ],
             "timestamp": asyncio.get_event_loop().time()
         }
+    
+    async def stop(self):
+        """Stop the MCP server"""
+        logger.info("ComparisonMCPServer stopped")

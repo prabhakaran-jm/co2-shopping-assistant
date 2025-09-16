@@ -97,8 +97,8 @@ class BoutiqueMCPServer:
             "currency_service": currency_addr,       # HTTP or proxy HTTP
         }
         
-        # HTTP client
-        self.client = httpx.AsyncClient(timeout=30.0)
+        # HTTP client with shorter default timeout for snappier startup
+        self.client = httpx.AsyncClient(timeout=5.0)
         
         logger.info("Boutique MCP Server initialized", base_url=boutique_base_url)
     
@@ -106,8 +106,14 @@ class BoutiqueMCPServer:
         """Start the MCP server."""
         self.running = True
         
-        # Test connectivity to boutique services
-        await self._test_connectivity()
+        # Optionally skip startup checks
+        skip_checks = os.getenv("SKIP_MCP_STARTUP_CHECKS", "").lower() in ("1", "true", "yes")
+        
+        if skip_checks:
+            logger.info("Skipping MCP startup connectivity checks per env")
+        else:
+            # Run connectivity tests in background (non-blocking) for faster startup
+            asyncio.create_task(self._test_connectivity_background())
         
         logger.info("Boutique MCP Server started")
     
@@ -118,12 +124,11 @@ class BoutiqueMCPServer:
         logger.info("Boutique MCP Server stopped")
     
     async def _test_connectivity(self):
-        """Test connectivity to boutique services."""
-        for service_name, endpoint in self.endpoints.items():
+        """Test connectivity to boutique services (parallel, short timeouts)."""
+        async def probe(service_name: str, endpoint: str):
             try:
                 is_http = isinstance(endpoint, str) and endpoint.startswith("http")
                 if service_name == "product_catalog" and not is_http:
-                    # Test gRPC connectivity (preferred for product catalog)
                     try:
                         async with aio.insecure_channel(endpoint) as ch:
                             stub = pb2_grpc.ProductCatalogServiceStub(ch)
@@ -136,22 +141,44 @@ class BoutiqueMCPServer:
                             error=str(grpc_error),
                         )
                 elif is_http:
-                    # Test HTTP connectivity when endpoint is an HTTP URL (e.g., via proxy)
                     health_url = f"{endpoint.rstrip('/')}/health"
-                    response = await self.client.get(health_url, timeout=5.0)
-                    if response.status_code == 200:
-                        logger.info("HTTP service connectivity test passed", service=service_name)
-                    else:
+                    try:
+                        response = await self.client.get(health_url, timeout=3.0)
+                        if response.status_code == 200:
+                            logger.info("HTTP service connectivity test passed", service=service_name)
+                        else:
+                            logger.warning(
+                                "HTTP service connectivity test failed",
+                                service=service_name,
+                                status=response.status_code,
+                            )
+                    except Exception as http_err:
                         logger.warning(
                             "HTTP service connectivity test failed",
                             service=service_name,
-                            status=response.status_code,
+                            error=str(http_err),
                         )
                 else:
-                    # Unknown scheme; skip active probing
-                    logger.info("Skipping connectivity probe for endpoint with unknown scheme", service=service_name, endpoint=endpoint)
+                    logger.info(
+                        "Skipping connectivity probe for endpoint with unknown scheme",
+                        service=service_name,
+                        endpoint=endpoint,
+                    )
             except Exception as e:
                 logger.warning("Service connectivity test failed", service=service_name, error=str(e))
+        
+        tasks = [probe(name, ep) for name, ep in self.endpoints.items()]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _test_connectivity_background(self):
+        """Run connectivity tests in background after a brief delay to allow app to come up."""
+        try:
+            # Small delay so the server can finish starting
+            await asyncio.sleep(1.0)
+            await self._test_connectivity()
+        except Exception:
+            # Best-effort only; do not crash the app
+            pass
     
     # Product Catalog Operations
     
