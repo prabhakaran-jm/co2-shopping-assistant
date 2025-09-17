@@ -427,8 +427,12 @@ kubectl port-forward svc/co2-assistant-service 8000:80 -n co2-assistant
 
 ## 📚 Documentation
 
-- **[Production Checklist](docs/PRODUCTION_CHECKLIST.md)** - Complete production deployment guide
+- **[Hackathon Submission README](README-HACKATHON-SUBMISSION.md)** - Complete hackathon submission guide
+- **[Complete Architecture Diagram](docs/architecture-diagram-updated.md)** - Updated system architecture with A2A, MCP, ADK
+- **[Complete Deployment Guide](docs/DEPLOYMENT-GUIDE-COMPLETE.md)** - Comprehensive deployment instructions
+- **[Complete Production Checklist](docs/PRODUCTION-CHECKLIST-COMPLETE.md)** - 150+ item production readiness checklist
 - **[Architecture Guide](docs/architecture.md)** - Detailed system architecture
+- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Environment-specific deployment options
 - **[Security Guide](SECURITY.md)** - Security best practices and guidelines
 
 ## 🤝 Contributing
