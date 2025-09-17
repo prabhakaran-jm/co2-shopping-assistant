@@ -69,7 +69,7 @@ spec:
             port: 8000
           initialDelaySeconds: 60
           timeoutSeconds: 5
-          periodSeconds: 10
+          periodSeconds: 11
           failureThreshold: 6
 ---
 apiVersion: v1
