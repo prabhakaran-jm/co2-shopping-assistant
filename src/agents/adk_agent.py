@@ -14,6 +14,8 @@ try:
     from google.adk import Agent, Runner 
     from google.adk.tools import BaseTool 
     from google.adk.models import Gemini 
+    from google.adk.sessions import InMemorySessionService 
+    from google.genai import types 
     ADK_AVAILABLE = True 
 except ImportError as e: 
     logger = structlog.get_logger(__name__) 
@@ -23,6 +25,8 @@ except ImportError as e:
     Runner = None 
     BaseTool = None 
     Gemini = None 
+    InMemorySessionService = None 
+    types = None 
  
 logger = structlog.get_logger(__name__) 
  
@@ -168,13 +172,13 @@ class ADKEcoAgent:
                 tools=[self.tool]
             )
              
-            # CORRECTED: Create runner with all required arguments for your pinned version.
-            # The 'session_service' parameter is required. Setting it to None
-            # uses the default in-memory session handler, which is appropriate here.
+            # CORRECTED: Create runner with proper InMemorySessionService
+            # This provides the session management functionality that was missing
+            session_service = InMemorySessionService()
             self.runner = Runner(
                 app_name="co2-assistant",
                 agent=self.agent,
-                session_service=None
+                session_service=session_service
             )
              
             logger.info("ADK Eco Agent initialized successfully") 
@@ -208,15 +212,34 @@ class ADKEcoAgent:
             # THE FINAL SOLUTION: A single call to run_async with all required
             # keyword arguments, as revealed by the clean environment's error message.
             # run_async returns an async generator, so we need to iterate through it
-            async_generator = self.runner.run_async(
-                user_id=session_id,      # Using session_id as the user identifier
-                session_id=session_id,
-                new_message=message
+            
+            # First, ensure the session exists by creating it if needed
+            try:
+                session = await self.runner.session_service.get_session(session_id)
+            except Exception:
+                # Session doesn't exist, create it with proper parameters
+                session = await self.runner.session_service.create_session(
+                    app_name="co2-assistant",
+                    user_id=session_id,
+                    session_id=session_id
+                )
+            
+            # Create proper Content object for the message
+            content = types.Content(
+                role="user",
+                parts=[types.Part(text=message)]
             )
             
-            # Get the final result from the async generator
+            # Try using the synchronous run method instead of run_async
+            generator = self.runner.run(
+                user_id=session_id,      # Using session_id as the user identifier
+                session_id=session_id,
+                new_message=content
+            )
+            
+            # Get the final result from the generator
             result = None
-            async for item in async_generator:
+            for item in generator:
                 result = item
             
             # Extract response content properly
