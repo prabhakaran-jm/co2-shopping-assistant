@@ -519,6 +519,190 @@ async def render_mcp_prompt(server_name: str, prompt_name: str, request: Request
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# A2A Protocol Endpoints
+@app.get("/api/a2a/status")
+async def get_a2a_status():
+    """Get A2A protocol status and registered agents."""
+    try:
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        status = await a2a_protocol.get_protocol_status()
+        return status
+        
+    except Exception as e:
+        logger.error("A2A status error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/a2a/agents")
+async def list_a2a_agents():
+    """List all registered A2A agents."""
+    try:
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        agent_list = []
+        
+        for agent_name in a2a_protocol.agents.keys():
+            agent_status = await a2a_protocol.get_agent_status(agent_name)
+            agent_list.append({
+                "name": agent_name,
+                "status": agent_status["status"],
+                "health": agent_status["health"],
+                "registered_at": agent_status["registered_at"],
+                "endpoint": agent_status["endpoint"]
+            })
+        
+        return {
+            "agents": agent_list,
+            "total_count": len(agent_list)
+        }
+        
+    except Exception as e:
+        logger.error("A2A agents list error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/a2a/agents/{agent_name}/status")
+async def get_agent_status(agent_name: str):
+    """Get status of a specific A2A agent."""
+    try:
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        status = await a2a_protocol.get_agent_status(agent_name)
+        
+        if status.get("status") == "not_registered":
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not registered")
+        
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("A2A agent status error", agent=agent_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/a2a/send")
+async def send_a2a_message(request: Request):
+    """Send a message via A2A protocol."""
+    try:
+        body = await request.json()
+        
+        # Validate required fields
+        required_fields = ["agent_name", "task"]
+        for field in required_fields:
+            if field not in body:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        agent_name = body["agent_name"]
+        task = body["task"]
+        message_type = body.get("message_type", "task_request")
+        timeout = body.get("timeout", 30.0)
+        
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        
+        # Send the message
+        response = await a2a_protocol.send_request(
+            agent_name=agent_name,
+            task=task,
+            message_type=message_type,
+            timeout=timeout
+        )
+        
+        return {
+            "success": True,
+            "agent_name": agent_name,
+            "message_type": message_type,
+            "response": response
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("A2A message send error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/a2a/broadcast")
+async def send_a2a_broadcast(request: Request):
+    """Send a broadcast message via A2A protocol."""
+    try:
+        body = await request.json()
+        
+        # Validate required fields
+        if "message_type" not in body:
+            raise HTTPException(status_code=400, detail="Missing required field: message_type")
+        if "payload" not in body:
+            raise HTTPException(status_code=400, detail="Missing required field: payload")
+        
+        message_type = body["message_type"]
+        payload = body["payload"]
+        exclude_agents = body.get("exclude_agents", [])
+        
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        
+        # Send the broadcast
+        responses = await a2a_protocol.send_broadcast(
+            message_type=message_type,
+            payload=payload,
+            exclude_agents=exclude_agents
+        )
+        
+        return {
+            "success": True,
+            "message_type": message_type,
+            "responses": responses,
+            "total_agents": len(responses)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("A2A broadcast error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/a2a/health")
+async def get_a2a_health():
+    """Get A2A protocol health status."""
+    try:
+        # Get A2A protocol from host agent
+        host_agent = agents.get("host")
+        if not host_agent or not hasattr(host_agent, 'a2a_protocol'):
+            raise HTTPException(status_code=503, detail="A2A protocol not available")
+        
+        a2a_protocol = host_agent.a2a_protocol
+        health_status = await a2a_protocol.health_check()
+        
+        return health_status
+        
+    except Exception as e:
+        logger.error("A2A health check error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/metrics")
 async def get_system_metrics():
     """Get system metrics for monitoring."""
