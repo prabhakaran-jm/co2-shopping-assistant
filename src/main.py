@@ -326,6 +326,199 @@ async def adk_chat_endpoint(payload: Dict[str, Any], request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# MCP Transport Endpoints
+@app.get("/api/mcp")
+async def mcp_info():
+    """Get MCP server information and available endpoints."""
+    return {
+        "protocol": "MCP",
+        "version": "2024-11-05",
+        "servers": {
+            "boutique": {
+                "name": "BoutiqueMCP",
+                "version": "1.0.0",
+                "endpoints": {
+                    "tools": "/api/mcp/boutique/tools",
+                    "resources": "/api/mcp/boutique/resources",
+                    "prompts": "/api/mcp/boutique/prompts"
+                }
+            },
+            "co2": {
+                "name": "CO2MCP", 
+                "version": "1.0.0",
+                "endpoints": {
+                    "tools": "/api/mcp/co2/tools",
+                    "resources": "/api/mcp/co2/resources",
+                    "prompts": "/api/mcp/co2/prompts"
+                }
+            }
+        }
+    }
+
+
+@app.get("/api/mcp/{server_name}/tools")
+async def list_mcp_tools(server_name: str):
+    """List available tools for an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        result = await mcp_transport._handle_tools_list({})
+        return result
+        
+    except Exception as e:
+        logger.error("MCP tools list error", server=server_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/mcp/{server_name}/tools/{tool_name}")
+async def execute_mcp_tool(server_name: str, tool_name: str, request: Request):
+    """Execute a tool on an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        body = await request.json()
+        
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        params = {
+            "name": tool_name,
+            "arguments": body
+        }
+        result = await mcp_transport._handle_tools_call(params)
+        return result
+        
+    except Exception as e:
+        logger.error("MCP tool execution error", server=server_name, tool=tool_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mcp/{server_name}/resources")
+async def list_mcp_resources(server_name: str):
+    """List available resources for an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        result = await mcp_transport._handle_resources_list({})
+        return result
+        
+    except Exception as e:
+        logger.error("MCP resources list error", server=server_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mcp/{server_name}/resources/{resource_uri:path}")
+async def read_mcp_resource(server_name: str, resource_uri: str):
+    """Read a resource from an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        params = {"uri": resource_uri}
+        result = await mcp_transport._handle_resources_read(params)
+        return result
+        
+    except Exception as e:
+        logger.error("MCP resource read error", server=server_name, resource=resource_uri, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mcp/{server_name}/prompts")
+async def list_mcp_prompts(server_name: str):
+    """List available prompts for an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        result = await mcp_transport._handle_prompts_list({})
+        return result
+        
+    except Exception as e:
+        logger.error("MCP prompts list error", server=server_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/mcp/{server_name}/prompts/{prompt_name}")
+async def render_mcp_prompt(server_name: str, prompt_name: str, request: Request):
+    """Render a prompt template from an MCP server."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+    
+    try:
+        body = await request.json()
+        
+        # Create MCP transport instance
+        if server_name == "boutique":
+            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+            mcp_transport = BoutiqueMCPTransport()
+        elif server_name == "co2":
+            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+            mcp_transport = CO2MCPTransport()
+        else:
+            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+        
+        params = {
+            "name": prompt_name,
+            "arguments": body
+        }
+        result = await mcp_transport._handle_prompts_get(params)
+        return result
+        
+    except Exception as e:
+        logger.error("MCP prompt render error", server=server_name, prompt=prompt_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/metrics")
 async def get_system_metrics():
     """Get system metrics for monitoring."""
