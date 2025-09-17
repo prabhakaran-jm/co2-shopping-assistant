@@ -190,7 +190,7 @@ class ADKEcoAgent:
         
         Args:
             message: User message
-            session_id: Session identifier (currently not used by ADK runner)
+            session_id: Session identifier (used as user_id for ADK runner)
             
         Returns:
             Response from ADK agent
@@ -205,27 +205,19 @@ class ADKEcoAgent:
         try:
             logger.info("ADK Agent: Processing message", message=message, session_id=session_id)
             
-            # FINAL SOLUTION: Provide session as first argument, then keyword-only arguments
-            # Function signature: _append_new_message_to_session(self, session, *, new_message, invocation_context)
-            if hasattr(self.runner, '_append_new_message_to_session'):
-                # Create the required invocation context
-                invocation_context = {"session_id": session_id}
-                
-                # Get the session from the runner (it should have a session_service)
-                session = self.runner.session_service.get_session(session_id) if self.runner.session_service else None
-                
-                # Add the message and context to the session
-                self.runner._append_new_message_to_session(
-                    session,
-                    new_message=message, 
-                    invocation_context=invocation_context
-                )
-                
-                # Run the agent to process the session's latest state
-                result = await self.runner.run_async()
-            else:
-                # Fallback: try run_async without arguments
-                result = await self.runner.run_async()
+            # THE FINAL SOLUTION: A single call to run_async with all required
+            # keyword arguments, as revealed by the clean environment's error message.
+            # run_async returns an async generator, so we need to iterate through it
+            async_generator = self.runner.run_async(
+                user_id=session_id,      # Using session_id as the user identifier
+                session_id=session_id,
+                new_message=message
+            )
+            
+            # Get the final result from the async generator
+            result = None
+            async for item in async_generator:
+                result = item
             
             # Extract response content properly
             if result and hasattr(result, 'content'):
