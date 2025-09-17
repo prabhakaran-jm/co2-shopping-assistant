@@ -17,12 +17,14 @@ kubectl ai --version
 
 ### **Configure AI Provider**
 ```bash
-# Set OpenAI API key (for kubectl-ai)
-export OPENAI_API_KEY="your-openai-api-key"
+# Set Google AI API key (kubectl-ai uses Gemini by default)
+export GOOGLE_AI_API_KEY="your-gemini-api-key"
 
-# Or configure for other providers
-kubectl ai config set provider openai
-kubectl ai config set api-key $OPENAI_API_KEY
+# kubectl-ai expects GEMINI_API_KEY, so we set it from GOOGLE_AI_API_KEY
+export GEMINI_API_KEY="$GOOGLE_AI_API_KEY"
+
+# kubectl-ai uses Gemini as the default provider
+# No additional configuration needed!
 ```
 
 ## 🚀 Basic kubectl-ai Workflows

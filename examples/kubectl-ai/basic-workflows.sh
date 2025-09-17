@@ -18,11 +18,14 @@ if ! command -v kubectl-ai &> /dev/null; then
 fi
 
 # Check if API key is configured
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo "❌ OPENAI_API_KEY is not set. Please set it:"
-    echo "   export OPENAI_API_KEY='your-openai-api-key'"
+if [ -z "$GOOGLE_AI_API_KEY" ]; then
+    echo "❌ GOOGLE_AI_API_KEY is not set. Please set it:"
+    echo "   export GOOGLE_AI_API_KEY='your-gemini-api-key'"
     exit 1
 fi
+
+# Set GEMINI_API_KEY for kubectl-ai (it expects this variable name)
+export GEMINI_API_KEY="$GOOGLE_AI_API_KEY"
 
 echo "✅ kubectl-ai is installed and configured"
 echo ""
