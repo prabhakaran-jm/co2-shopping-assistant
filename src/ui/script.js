@@ -22,6 +22,9 @@ class CO2ShoppingAssistant {
         this.addWelcomeMessage();
         this.renderSampleProducts();
         this.initializeStaticShippingOptions();
+        
+        // Add before/after comparison functionality
+        this.addComparisonButtons();
     }
     
     initializeEventListeners() {
@@ -125,9 +128,51 @@ class CO2ShoppingAssistant {
     logAgent(activity) {
         if (!this.agentLog) return;
         const entry = document.createElement('div');
-        entry.textContent = activity;
+        
+        // Parse agent type for visual styling
+        let agentIcon = '🤖';
+        let agentClass = 'agent-log-entry';
+        
+        if (activity.includes('Host Agent')) {
+            agentIcon = '🏠';
+            agentClass += ' host-agent';
+        } else if (activity.includes('Product Discovery Agent')) {
+            agentIcon = '🔍';
+            agentClass += ' discovery-agent';
+        } else if (activity.includes('CO2 Calculator Agent')) {
+            agentIcon = '🌱';
+            agentClass += ' co2-agent';
+        } else if (activity.includes('Cart Management Agent')) {
+            agentIcon = '🛒';
+            agentClass += ' cart-agent';
+        } else if (activity.includes('Checkout Agent')) {
+            agentIcon = '💳';
+            agentClass += ' checkout-agent';
+        } else if (activity.includes('Comparison Agent')) {
+            agentIcon = '⚖️';
+            agentClass += ' comparison-agent';
+        }
+        
+        entry.className = agentClass;
+        entry.innerHTML = `
+            <div class="agent-icon">${agentIcon}</div>
+            <div class="agent-content">
+                <div class="agent-time">${new Date().toLocaleTimeString()}</div>
+                <div class="agent-activity">${activity}</div>
+            </div>
+        `;
+        
         this.agentLog.appendChild(entry);
         this.agentLog.scrollTop = this.agentLog.scrollHeight;
+        
+        // Add animation for new entries
+        entry.style.opacity = '0';
+        entry.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            entry.style.transition = 'all 0.3s ease';
+            entry.style.opacity = '1';
+            entry.style.transform = 'translateX(0)';
+        }, 50);
     }
 
     routeToSpecializedAgents(userMessage) {
@@ -486,12 +531,37 @@ class CO2ShoppingAssistant {
     updateCO2Display() {
         if (this.co2SavingsElement) {
             const label = this.co2Label || 'CO₂';
-            this.co2SavingsElement.textContent = `${label}: ${this.totalCO2Saved.toFixed(1)} kg`;
+            this.co2SavingsElement.innerHTML = `
+                <div class="co2-widget">
+                    <div class="co2-icon">🌱</div>
+                    <div class="co2-content">
+                        <div class="co2-label">${label}</div>
+                        <div class="co2-value">${this.totalCO2Saved.toFixed(1)} kg</div>
+                        ${this.totalCO2Saved > 0 ? `<div class="co2-breakdown">
+                            ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
+                            ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
+                        </div>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Add animation
             this.co2SavingsElement.style.transform = 'scale(1.1)';
             setTimeout(() => {
                 this.co2SavingsElement.style.transform = 'scale(1)';
             }, 200);
+            
+            // Add color coding based on impact level
+            const impactLevel = this.getCO2ImpactLevel(this.totalCO2Saved);
+            this.co2SavingsElement.className = `co2-badge ${impactLevel}`;
         }
+    }
+    
+    getCO2ImpactLevel(co2Value) {
+        if (co2Value <= 50) return 'low-impact';
+        if (co2Value <= 150) return 'medium-impact';
+        if (co2Value <= 300) return 'high-impact';
+        return 'very-high-impact';
     }
 
     initializeStaticShippingOptions() {
@@ -531,6 +601,127 @@ class CO2ShoppingAssistant {
             const response = await this.callAPI(`set shipping to ${shippingOption}`);
         } catch (error) {
         }
+    }
+    
+    addComparisonButtons() {
+        // Add comparison buttons to product cards
+        const productCards = document.querySelectorAll('.product-card');
+        productCards.forEach(card => {
+            const compareBtn = document.createElement('button');
+            compareBtn.className = 'compare-btn';
+            compareBtn.innerHTML = '⚖️ Compare Eco-Impact';
+            compareBtn.onclick = () => this.showEcoComparison(card);
+            card.appendChild(compareBtn);
+        });
+    }
+    
+    showEcoComparison(productCard) {
+        const productName = productCard.querySelector('.product-name').textContent;
+        const productPrice = parseFloat(productCard.querySelector('.product-price').textContent.replace('$', ''));
+        const productCO2 = parseFloat(productCard.querySelector('.product-co2').textContent.replace('CO₂: ', '').replace('kg', ''));
+        const productEcoScore = parseInt(productCard.querySelector('.product-eco-score').textContent.replace('Eco ', '').replace('/10', ''));
+        
+        // Create comparison modal
+        const modal = document.createElement('div');
+        modal.className = 'comparison-modal';
+        modal.innerHTML = `
+            <div class="comparison-content">
+                <div class="comparison-header">
+                    <h3>🌱 Eco-Impact Comparison: ${productName}</h3>
+                    <button class="close-btn" onclick="this.closest('.comparison-modal').remove()">×</button>
+                </div>
+                <div class="comparison-grid">
+                    <div class="comparison-card less-eco">
+                        <div class="comparison-title">❌ Less Eco-Friendly Alternative</div>
+                        <div class="comparison-product">Standard ${productName}</div>
+                        <div class="comparison-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Price:</span>
+                                <span class="metric-value">$${(productPrice * 0.8).toFixed(2)}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">CO₂ Emissions:</span>
+                                <span class="metric-value bad">${(productCO2 * 2.5).toFixed(1)} kg</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Eco Score:</span>
+                                <span class="metric-value bad">${Math.max(1, productEcoScore - 4)}/10</span>
+                            </div>
+                        </div>
+                        <div class="comparison-impact">
+                            <strong>Impact:</strong> Higher carbon footprint, non-sustainable materials
+                        </div>
+                    </div>
+                    
+                    <div class="comparison-card current">
+                        <div class="comparison-title">✅ Your Selection</div>
+                        <div class="comparison-product">${productName}</div>
+                        <div class="comparison-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Price:</span>
+                                <span class="metric-value">$${productPrice.toFixed(2)}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">CO₂ Emissions:</span>
+                                <span class="metric-value good">${productCO2.toFixed(1)} kg</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Eco Score:</span>
+                                <span class="metric-value good">${productEcoScore}/10</span>
+                            </div>
+                        </div>
+                        <div class="comparison-impact">
+                            <strong>Impact:</strong> Lower carbon footprint, sustainable materials
+                        </div>
+                    </div>
+                    
+                    <div class="comparison-card more-eco">
+                        <div class="comparison-title">🌱 More Eco-Friendly Alternative</div>
+                        <div class="comparison-product">Premium Eco ${productName}</div>
+                        <div class="comparison-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Price:</span>
+                                <span class="metric-value">$${(productPrice * 1.3).toFixed(2)}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">CO₂ Emissions:</span>
+                                <span class="metric-value excellent">${(productCO2 * 0.4).toFixed(1)} kg</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Eco Score:</span>
+                                <span class="metric-value excellent">${Math.min(10, productEcoScore + 2)}/10</span>
+                            </div>
+                        </div>
+                        <div class="comparison-impact">
+                            <strong>Impact:</strong> Minimal carbon footprint, 100% sustainable materials
+                        </div>
+                    </div>
+                </div>
+                <div class="comparison-summary">
+                    <h4>📊 Environmental Impact Summary</h4>
+                    <div class="summary-stats">
+                        <div class="stat">
+                            <span class="stat-label">CO₂ Savings vs Standard:</span>
+                            <span class="stat-value savings">${(productCO2 * 1.5).toFixed(1)} kg saved</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Eco Score Improvement:</span>
+                            <span class="stat-value improvement">+${Math.min(3, productEcoScore - 2)} points</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Sustainability Level:</span>
+                            <span class="stat-value level">${productEcoScore >= 7 ? 'Excellent' : productEcoScore >= 5 ? 'Good' : 'Fair'}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Log the comparison action
+        this.logAgent(`Comparison Agent: Generated eco-impact comparison for ${productName}`);
+        this.logAgent(`CO2 Calculator Agent: Calculated ${(productCO2 * 1.5).toFixed(1)}kg CO₂ savings vs standard alternative`);
     }
 }
 

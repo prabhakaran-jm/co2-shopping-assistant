@@ -569,6 +569,13 @@ What would you like to explore? I'll make sure to highlight the environmental be
                     min_price=fallback_params.get("min_price"),
                     limit=fallback_params.get("limit", 10)
                 )
+            
+            # If still no products from MCP server, use our fallback data
+            if not products:
+                print(f"ProductDiscoveryAgent: MCP server returned no products, using fallback data")
+                logger.warning("MCP server returned no products, using fallback data")
+                return await self._get_fallback_products(search_params)
+            
             return products
             
         except Exception as e:
@@ -584,6 +591,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
                 "id": "sunglasses",
                 "name": "Sunglasses",
                 "category": "accessories",
+                "categories": ["accessories"],
                 "price": 19.99,
                 "description": "Stylish sunglasses with UV protection",
                 "eco_score": 9,
@@ -594,6 +602,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
                 "id": "tank-top",
                 "name": "Tank Top",
                 "category": "clothing",
+                "categories": ["clothing"],
                 "price": 18.99,
                 "description": "Comfortable cotton tank top",
                 "eco_score": 9,
@@ -604,6 +613,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
                 "id": "watch",
                 "name": "Watch",
                 "category": "accessories",
+                "categories": ["accessories"],
                 "price": 109.99,
                 "description": "Classic wristwatch with leather strap",
                 "eco_score": 4,
@@ -614,6 +624,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
                 "id": "loafers",
                 "name": "Loafers",
                 "category": "clothing",
+                "categories": ["clothing"],
                 "price": 89.99,
                 "description": "Comfortable leather loafers",
                 "eco_score": 5,
@@ -724,14 +735,50 @@ What would you like to explore? I'll make sure to highlight the environmental be
             print(f"🔍 ProductDiscoveryAgent: Product passed filters: {product['name']}")
             filtered_products.append(product)
         
-        # Graceful fallback: if category filtered out all, return eco-friendly top items
-        if not filtered_products:
-            return mock_products[: min(2, len(mock_products))]
+        # *** START OF THE FIX ***
+        # Corrected Fallback Logic:
+        # If the initial filtering yields no results, try a broader search 
+        # that STILL respects the most important criterion: the category.
+        if not filtered_products and search_params.get("category"):
+            print(f"⚠️ Initial filter found no results. Falling back to category-only search for '{search_params['category']}'.")
+            
+            # Re-filter using only the category and eco-friendly flag.
+            fallback_products = []
+            for product in mock_products:
+                if product["category"] == search_params["category"]:
+                    if search_params.get("eco_friendly") and product["eco_score"] < 4.0:
+                        continue # Still respect the eco_friendly filter
+                    fallback_products.append(product)
+            
+            print(f"✅ Fallback search found {len(fallback_products)} items in category.")
+            return fallback_products
+        # *** END OF THE FIX ***
+
         return filtered_products
     
     async def _enrich_with_co2_data(self, products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize and enrich products for consistent downstream formatting."""
-        return normalize_products(products)
+        normalized = normalize_products(products)
+        if not normalized:
+            # Fallback: if normalization fails, return products with minimal processing
+            print(f"⚠️ normalize_products returned empty list. Using fallback normalization for {len(products)} products.")
+            fallback_products = []
+            for product in products:
+                fallback_product = {
+                    "name": product.get("name", "N/A"),
+                    "price": float(product.get("price", 0.0)),
+                    "co2_emissions": float(product.get("co2_emissions", 50.0)),
+                    "eco_score": int(product.get("eco_score", 5)),
+                    "co2_rating": "Medium",
+                    "description": product.get("description", "No description available"),
+                    "image_url": "",
+                    "id": product.get("id", ""),
+                    "categories": [product.get("category", "")] if product.get("category") else [],
+                    "original": product,
+                }
+                fallback_products.append(fallback_product)
+            return fallback_products
+        return normalized
     
     async def _get_recommendations(self, rec_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get product recommendations."""
