@@ -88,13 +88,14 @@ When calculating CO2 emissions:
 
 Always help users understand their environmental impact and guide them toward more sustainable choices."""
     
-    async def process_message(self, message: str, session_id: str) -> Dict[str, Any]:
+    async def process_message(self, message: str, session_id: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Process CO2 calculation and environmental analysis requests.
         
         Args:
             message: User's message/query
             session_id: Session identifier
+            context: Additional context including product information
             
         Returns:
             Dictionary containing the response
@@ -102,15 +103,22 @@ Always help users understand their environmental impact and guide them toward mo
         start_time = asyncio.get_event_loop().time()
         
         try:
-            logger.info("Processing CO2 calculation request", message=message, session_id=session_id)
+            logger.info("Processing CO2 calculation request", message=message, session_id=session_id, context=context)
+            
+            # Extract product context if available
+            product_context = None
+            if context:
+                product_context = context.get("current_product_context", {})
+                if product_context:
+                    logger.info("Using product context for CO2 calculation", product=product_context.get("name"))
             
             # Parse the request type
-            request_type = await self._parse_co2_request_type(message)
+            request_type = await self._parse_co2_request_type(message, product_context)
             
             if request_type == "calculate":
-                response = await self._handle_co2_calculation(message, session_id)
+                response = await self._handle_co2_calculation(message, session_id, product_context)
             elif request_type == "compare":
-                response = await self._handle_co2_comparison(message, session_id)
+                response = await self._handle_co2_comparison(message, session_id, product_context)
             elif request_type == "analyze":
                 response = await self._handle_environmental_analysis(message, session_id)
             elif request_type == "suggest":
@@ -140,9 +148,16 @@ Always help users understand their environmental impact and guide them toward mo
                 "agent": self.name
             }
     
-    async def _parse_co2_request_type(self, message: str) -> str:
+    async def _parse_co2_request_type(self, message: str, product_context: Dict[str, Any] = None) -> str:
         """Parse the type of CO2-related request."""
         message_lower = message.lower()
+        
+        # If we have product context and this seems like a follow-up, prioritize specific analysis
+        if product_context and any(word in message_lower for word in ["this", "that", "it", "the product", "the item"]):
+            if any(word in message_lower for word in ["co2", "carbon", "emission", "environmental", "impact"]):
+                return "analyze"
+            elif any(word in message_lower for word in ["add", "cart", "buy", "purchase"]):
+                return "calculate"
         
         if any(word in message_lower for word in ["calculate", "co2", "emission", "carbon", "footprint"]):
             return "calculate"
@@ -155,11 +170,11 @@ Always help users understand their environmental impact and guide them toward mo
         else:
             return "general"
     
-    async def _handle_co2_calculation(self, message: str, session_id: str) -> str:
+    async def _handle_co2_calculation(self, message: str, session_id: str, product_context: Dict[str, Any] = None) -> str:
         """Handle CO2 calculation requests."""
         try:
             # Extract calculation parameters
-            calc_params = await self._extract_calculation_parameters(message)
+            calc_params = await self._extract_calculation_parameters(message, product_context)
             
             if not calc_params:
                 return "I need more information to calculate CO2 emissions. Please specify the product, shipping method, or what you'd like me to calculate."
@@ -176,7 +191,7 @@ Always help users understand their environmental impact and guide them toward mo
             logger.error("CO2 calculation failed", error=str(e))
             return "I encountered an error while calculating CO2 emissions. Please try again with more specific details."
     
-    async def _handle_co2_comparison(self, message: str, session_id: str) -> str:
+    async def _handle_co2_comparison(self, message: str, session_id: str, product_context: Dict[str, Any] = None) -> str:
         """Handle CO2 comparison requests."""
         try:
             # Extract comparison parameters
@@ -256,7 +271,7 @@ I can help you with:
 
 What would you like to calculate or analyze? I'll provide detailed CO2 breakdowns and suggest eco-friendly alternatives! 🌍"""
     
-    async def _extract_calculation_parameters(self, message: str) -> Dict[str, Any]:
+    async def _extract_calculation_parameters(self, message: str, product_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Extract parameters for CO2 calculation."""
         import re
         
@@ -269,7 +284,14 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             "packaging_type": "standard"
         }
         
-        # First, try to extract product name from the message
+        # Use product context if available
+        if product_context:
+            params["product_name"] = product_context.get("name")
+            params["product_type"] = product_context.get("type")
+            params["price"] = product_context.get("price")
+            logger.info("Using product context for CO2 calculation", params=params)
+        
+        # First, try to extract product name from the message (override context if found)
         product_name = await self._extract_product_name(message)
         if product_name:
             params["product_name"] = product_name
@@ -751,6 +773,67 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             "comparison_results": comparison_results,
             "best_option": min(comparison_results, key=lambda r: r["co2_data"]["total_co2"])
         }
+    
+    def _format_co2_calculation_response(self, co2_data: Dict[str, Any], calc_params: Dict[str, Any]) -> str:
+        """Format CO2 calculation response with context awareness."""
+        product_name = calc_params.get("product_name", "this product")
+        
+        # Use product context if available
+        if calc_params.get("product_name"):
+            product_name = calc_params["product_name"]
+        
+        # Extract CO2 values
+        manufacturing_co2 = co2_data.get("manufacturing_co2", 0)
+        shipping_co2 = co2_data.get("shipping_co2", 0)
+        packaging_co2 = co2_data.get("packaging_co2", 0)
+        total_co2 = co2_data.get("total_co2", 0)
+        
+        # Determine impact level
+        if total_co2 <= 50:
+            impact_level = "Low Impact"
+            impact_emoji = "🌱"
+        elif total_co2 <= 150:
+            impact_level = "Medium Impact"
+            impact_emoji = "⚠️"
+        else:
+            impact_level = "High Impact"
+            impact_emoji = "🔴"
+        
+        # Build context-aware response
+        response_parts = [
+            f"🌍 **CO2 Impact Analysis for {product_name}**",
+            f"",
+            f"{impact_emoji} **Total CO2 Emissions: {total_co2:.1f} kg** ({impact_level})",
+            f"",
+            f"📊 **Breakdown:**",
+            f"• Manufacturing: {manufacturing_co2:.1f} kg CO2",
+            f"• Shipping: {shipping_co2:.1f} kg CO2",
+            f"• Packaging: {packaging_co2:.1f} kg CO2",
+            f""
+        ]
+        
+        # Add context-aware recommendations
+        if calc_params.get("product_name"):
+            response_parts.extend([
+                f"💡 **Context-Aware Recommendations:**",
+                f"• This {product_name.lower()} has a {impact_level.lower()} carbon footprint",
+            ])
+            
+            if total_co2 > 100:
+                response_parts.append(f"• Consider eco-friendly alternatives for {product_name.lower()}")
+            else:
+                response_parts.append(f"• This {product_name.lower()} is relatively eco-friendly!")
+        
+        # Add sustainability tips
+        response_parts.extend([
+            f"",
+            f"🌿 **Sustainability Tips:**",
+            f"• Choose ground shipping to reduce CO2 by 60-80%",
+            f"• Look for products with eco-friendly packaging",
+            f"• Consider buying used or refurbished items"
+        ])
+        
+        return "\n".join(response_parts)
     
     async def _execute_environmental_analysis_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute environmental analysis task."""

@@ -109,6 +109,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
                     "conversation_history": [],
                     "user_preferences": {},
                     "current_cart": {},
+                    "current_product_context": {},  # Track current product being discussed
+                    "product_history": [],  # Track products mentioned in conversation
+                    "agent_context": {},  # Context passed between agents
                     "last_activity": datetime.now()
                 }
             
@@ -119,6 +122,17 @@ Always provide helpful, environmentally conscious responses that guide users tow
                 "user_message": message,
                 "type": "user"
             })
+            context["last_activity"] = datetime.now()
+            
+            # Extract and update product context
+            product_context = await self._extract_product_context(message, context)
+            if product_context:
+                context["current_product_context"] = product_context
+                context["product_history"].append({
+                    "timestamp": datetime.now().isoformat(),
+                    "product": product_context,
+                    "context": "mentioned"
+                })
             
             # Analyze user intent and determine routing
             intent = await self._analyze_intent(message, context)
@@ -548,23 +562,28 @@ Always provide helpful, environmentally conscious responses that guide users tow
             primary_agent = self.sub_agents[primary_agent_name]
             print(f"HOST: Found agent: {type(primary_agent)}")
             
-            # Prepare task for the agent
-            task = {
-                "message": message,
-                "intent": intent,
-                "context": context,
-                "session_id": session_id,
-                "parameters": intent.get("parameters", {})
-            }
-            print(f"HOST: Prepared task: {task}")
-            
-            # Execute task using A2A protocol
-            logger.info("HostAgent: Routing request to agent", agent_name=primary_agent_name, task=task)
-            print(f"HOST: Calling A2A protocol send_request")
-            response = await self.a2a_protocol.send_request(
-                agent_name=primary_agent_name,
-                task=task
-            )
+            # Special handling for CO2 Calculator Agent to pass context
+            if primary_agent_name == "CO2CalculatorAgent":
+                print(f"HOST: Calling CO2 Calculator Agent with context")
+                response = await primary_agent.process_message(message, session_id, context)
+            else:
+                # Prepare task for other agents
+                task = {
+                    "message": message,
+                    "intent": intent,
+                    "context": context,
+                    "session_id": session_id,
+                    "parameters": intent.get("parameters", {})
+                }
+                print(f"HOST: Prepared task: {task}")
+                
+                # Execute task using A2A protocol
+                logger.info("HostAgent: Routing request to agent", agent_name=primary_agent_name, task=task)
+                print(f"HOST: Calling A2A protocol send_request")
+                response = await self.a2a_protocol.send_request(
+                    agent_name=primary_agent_name,
+                    task=task
+                )
             print(f"HOST: Received response from A2A: {type(response)}")
             logger.info("HostAgent: Received response from agent", agent_name=primary_agent_name, response_type=type(response).__name__)
             
@@ -781,7 +800,8 @@ I'm here to help you shop more sustainably! 🌱"""
         if intent.get("needs_co2_calculation", False):
             co2_agent = self.sub_agents.get("CO2CalculatorAgent")
             if co2_agent:
-                step_result = await co2_agent.process_message(query, session_id)
+                # Pass context to CO2 Calculator Agent
+                step_result = await co2_agent.process_message(query, session_id, context)
                 steps.append({"step": "co2_calculation", "result": step_result})
                 context["co2_data"] = step_result
         
@@ -795,3 +815,102 @@ I'm here to help you shop more sustainably! 🌱"""
         
         # Combine results
         return f"I've completed your request through a sequential workflow: {len(steps)} steps executed successfully."
+    
+    async def _extract_product_context(self, message: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract product context from user message.
+        
+        Args:
+            message: User's message
+            context: Current session context
+            
+        Returns:
+            Product context dictionary if found, None otherwise
+        """
+        import re
+        
+        # Product keywords to look for
+        product_keywords = {
+            "watch": {"category": "accessories", "type": "watch"},
+            "sunglasses": {"category": "accessories", "type": "sunglasses"},
+            "glasses": {"category": "accessories", "type": "sunglasses"},
+            "loafers": {"category": "clothing", "type": "shoes"},
+            "shoes": {"category": "clothing", "type": "shoes"},
+            "tank top": {"category": "clothing", "type": "shirt"},
+            "shirt": {"category": "clothing", "type": "shirt"},
+            "hairdryer": {"category": "home", "type": "appliance"},
+            "mug": {"category": "home", "type": "kitchen"},
+            "candle holder": {"category": "home", "type": "decor"},
+            "jar": {"category": "home", "type": "storage"},
+            "laptop": {"category": "accessories", "type": "electronics"},
+            "phone": {"category": "accessories", "type": "electronics"},
+            "dress": {"category": "clothing", "type": "clothing"},
+            "bag": {"category": "accessories", "type": "bag"}
+        }
+        
+        message_lower = message.lower()
+        
+        # Look for specific product mentions
+        for keyword, product_info in product_keywords.items():
+            if keyword in message_lower:
+                # Extract additional context from message
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', message)
+                price = float(price_match.group(1)) if price_match else None
+                
+                # Check if there's a previous product context to maintain continuity
+                current_context = context.get("current_product_context", {})
+                
+                product_context = {
+                    "name": keyword.title(),
+                    "category": product_info["category"],
+                    "type": product_info["type"],
+                    "price": price,
+                    "mentioned_in": message,
+                    "timestamp": datetime.now().isoformat(),
+                    "context_type": "explicit_mention"
+                }
+                
+                # If this is a follow-up question, preserve previous context
+                if current_context and self._is_follow_up_question(message):
+                    product_context["previous_context"] = current_context
+                    product_context["context_type"] = "follow_up"
+                
+                logger.info("Extracted product context", product_context=product_context)
+                return product_context
+        
+        # Check for implicit references (pronouns, "this", "that", etc.)
+        implicit_refs = ["this", "that", "it", "the product", "the item", "the watch", "the glasses"]
+        if any(ref in message_lower for ref in implicit_refs):
+            current_context = context.get("current_product_context", {})
+            if current_context:
+                # This is a follow-up about the current product
+                product_context = current_context.copy()
+                product_context["context_type"] = "implicit_reference"
+                product_context["mentioned_in"] = message
+                product_context["timestamp"] = datetime.now().isoformat()
+                
+                logger.info("Detected implicit product reference", product_context=product_context)
+                return product_context
+        
+        return None
+    
+    def _is_follow_up_question(self, message: str) -> bool:
+        """
+        Check if the message is a follow-up question about a product.
+        
+        Args:
+            message: User's message
+            
+        Returns:
+            True if this appears to be a follow-up question
+        """
+        follow_up_indicators = [
+            "what about", "how about", "tell me about", "more about",
+            "co2", "carbon", "environmental", "eco", "sustainable",
+            "price", "cost", "expensive", "cheap",
+            "add to cart", "buy", "purchase", "order",
+            "compare", "alternative", "better", "vs"
+        ]
+        
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in follow_up_indicators)
