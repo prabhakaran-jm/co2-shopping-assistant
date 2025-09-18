@@ -261,6 +261,7 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
         import re
         
         params = {
+            "product_name": None,
             "product_type": None,
             "price": None,
             "shipping_method": None,
@@ -268,17 +269,28 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             "packaging_type": "standard"
         }
         
-        # Extract product type
-        categories = ["electronics", "clothing", "books", "home", "sports", "beauty", "automotive"]
+        # First, try to extract product name from the message
+        product_name = await self._extract_product_name(message)
+        if product_name:
+            params["product_name"] = product_name
+            # Get actual product data if we found a product name
+            product_data = await self._get_product_by_name(product_name)
+            if product_data:
+                params["price"] = product_data.get("price")
+                params["product_type"] = product_data.get("category")
+        
+        # Extract product type from categories
+        categories = ["electronics", "clothing", "books", "home", "sports", "beauty", "automotive", "accessories"]
         for category in categories:
             if category in message.lower():
                 params["product_type"] = category
                 break
         
-        # Extract price
-        price_match = re.search(r'\$(\d+(?:\.\d{2})?)', message)
-        if price_match:
-            params["price"] = float(price_match.group(1))
+        # Extract price if not already set
+        if not params["price"]:
+            price_match = re.search(r'\$(\d+(?:\.\d{2})?)', message)
+            if price_match:
+                params["price"] = float(price_match.group(1))
         
         # Extract shipping method
         shipping_methods = ["ground", "air", "sea", "rail", "express", "standard"]
@@ -299,6 +311,64 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             params["packaging_type"] = "minimal"
         
         return params
+    
+    async def _extract_product_name(self, message: str) -> Optional[str]:
+        """Extract product name from the message."""
+        # Common product names in the catalog
+        product_names = [
+            "sunglasses", "tank top", "watch", "loafers", "hairdryer", 
+            "candle holder", "salt & pepper shakers", "bamboo glass jar", "mug",
+            "salt", "pepper", "shakers", "jar", "holder", "dryer"
+        ]
+        
+        message_lower = message.lower()
+        for product in product_names:
+            if product in message_lower:
+                return product
+        
+        return None
+    
+    async def _get_product_by_name(self, product_name: str) -> Optional[Dict[str, Any]]:
+        """Get actual product data from the catalog."""
+        # This matches the mock_products data from cart_management_agent.py
+        mock_products = [
+            {"id": "sunglasses", "name": "Sunglasses", "price": 19.99, "category": "accessories", "co2_emissions": 49.0, "eco_score": 9},
+            {"id": "tank-top", "name": "Tank Top", "price": 18.99, "category": "clothing", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "watch", "name": "Watch", "price": 109.99, "category": "accessories", "co2_emissions": 44.5, "eco_score": 4},
+            {"id": "loafers", "name": "Loafers", "price": 89.99, "category": "clothing", "co2_emissions": 45.5, "eco_score": 5},
+            {"id": "hairdryer", "name": "Hairdryer", "price": 24.99, "category": "home", "co2_emissions": 48.8, "eco_score": 8},
+            {"id": "candle-holder", "name": "Candle Holder", "price": 18.99, "category": "home", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "salt-and-pepper-shakers", "name": "Salt & Pepper Shakers", "price": 18.49, "category": "home", "co2_emissions": 49.1, "eco_score": 9},
+            {"id": "bamboo-glass-jar", "name": "Bamboo Glass Jar", "price": 5.49, "category": "home", "co2_emissions": 49.7, "eco_score": 9},
+            {"id": "mug", "name": "Mug", "price": 8.99, "category": "home", "co2_emissions": 49.6, "eco_score": 9}
+        ]
+        
+        # Normalize product name for matching
+        product_name_lower = product_name.lower()
+        
+        # Direct name matching
+        for product in mock_products:
+            if (product_name_lower in product["name"].lower() or 
+                product_name_lower in product["id"].lower()):
+                return product
+        
+        # Handle aliases
+        alias_map = {
+            "salt": "salt-and-pepper-shakers",
+            "pepper": "salt-and-pepper-shakers", 
+            "shakers": "salt-and-pepper-shakers",
+            "jar": "bamboo-glass-jar",
+            "holder": "candle-holder",
+            "dryer": "hairdryer"
+        }
+        
+        if product_name_lower in alias_map:
+            alias_id = alias_map[product_name_lower]
+            for product in mock_products:
+                if product["id"] == alias_id:
+                    return product
+        
+        return None
     
     async def _extract_comparison_parameters(self, message: str) -> Dict[str, Any]:
         """Extract parameters for CO2 comparison."""
@@ -363,9 +433,53 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             "total_co2": 0.0,
             "breakdown": {},
             "rating": "Unknown",
-            "equivalent": {}
+            "equivalent": {},
+            "product_name": params.get("product_name")
         }
         
+        # If we have a specific product, use its actual CO2 data
+        if params.get("product_name"):
+            product_data = await self._get_product_by_name(params["product_name"])
+            if product_data and "co2_emissions" in product_data:
+                # Use actual product CO2 emissions
+                actual_co2 = product_data["co2_emissions"]
+                co2_data["manufacturing_co2"] = actual_co2 * 0.8  # Assume 80% manufacturing
+                co2_data["packaging_co2"] = actual_co2 * 0.2     # Assume 20% packaging
+                co2_data["total_co2"] = actual_co2
+                
+                co2_data["breakdown"]["manufacturing"] = {
+                    "co2": co2_data["manufacturing_co2"],
+                    "factor": "Actual product data",
+                    "percentage": 80.0
+                }
+                co2_data["breakdown"]["packaging"] = {
+                    "co2": co2_data["packaging_co2"],
+                    "type": "standard",
+                    "percentage": 20.0
+                }
+                
+                # Determine rating based on actual data
+                if actual_co2 < 30:
+                    co2_data["rating"] = "Very Low"
+                elif actual_co2 < 45:
+                    co2_data["rating"] = "Low"
+                elif actual_co2 < 50:
+                    co2_data["rating"] = "Medium"
+                elif actual_co2 < 60:
+                    co2_data["rating"] = "High"
+                else:
+                    co2_data["rating"] = "Very High"
+                    
+                # Add equivalents
+                co2_data["equivalent"] = {
+                    "miles_driven": actual_co2 * 2.5,  # Rough conversion
+                    "trees_needed": actual_co2 * 0.1,  # Trees to offset
+                    "days_electricity": actual_co2 * 0.5  # Days of home electricity
+                }
+                
+                return co2_data
+        
+        # Fallback to generic calculation if no specific product found
         # Manufacturing CO2
         if params.get("product_type") and params.get("price"):
             product_type = params["product_type"]
@@ -524,6 +638,11 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
     def _format_co2_calculation_response(self, co2_data: Dict[str, Any], params: Dict[str, Any]) -> str:
         """Format CO2 calculation response."""
         response = f"🌍 **CO2 Emission Calculation**\n\n"
+        
+        # Show product name if available
+        if co2_data.get("product_name"):
+            response += f"**Product**: {co2_data['product_name'].title()}\n"
+        
         response += f"**Total CO2 Emissions**: {co2_data['total_co2']:.1f} kg CO2 ({co2_data['rating']} Impact)\n\n"
         
         response += "📊 **Breakdown by Source**:\n"

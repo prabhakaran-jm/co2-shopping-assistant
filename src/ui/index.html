@@ -18,23 +18,50 @@
                 <span id="co2-savings">0 kg CO₂ saved</span>
             </div>
         </div>
-        
-        <div class="chat-container">
-            <div id="chat-messages" class="chat-messages"></div>
-            <div class="chat-input-container">
-                <input type="text" id="chat-input" placeholder="Ask about products, CO2 impact, or get recommendations..." />
-                <button id="send-button">Send</button>
-            </div>
-        </div>
-        
-        <div class="features">
-            <h3>🌿 Environmental Features</h3>
-            <ul>
-                <li>CO2 impact analysis for products</li>
-                <li>Sustainable alternatives suggestions</li>
-                <li>Carbon footprint tracking</li>
-                <li>Eco-friendly shopping recommendations</li>
-            </ul>
+        <div class="main-grid">
+            <aside class="agent-panel">
+                <div class="agent-panel__header">🤝 Agent Activity</div>
+                <div id="agent-log" class="agent-panel__log"></div>
+                
+                <div class="shipping-options-static">
+                    <div class="shipping-options-static__header">🚚 Shipping Options</div>
+                    <div class="shipping-option" data-co2="150" data-price="7.99" data-days="4-6">
+                        <div class="shipping-option__name">Eco-Friendly</div>
+                        <div class="shipping-option__details">4-6 days • CO₂: 150.0 kg • $7.99</div>
+                    </div>
+                    <div class="shipping-option" data-co2="250" data-price="5.99" data-days="3-5">
+                        <div class="shipping-option__name">Ground</div>
+                        <div class="shipping-option__details">3-5 days • CO₂: 250.0 kg • $5.99</div>
+                    </div>
+                    <div class="shipping-option" data-co2="1000" data-price="12.99" data-days="1-2">
+                        <div class="shipping-option__name">Express</div>
+                        <div class="shipping-option__details">1-2 days • CO₂: 1000.0 kg • $12.99</div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="workspace">
+                <div class="chat-container">
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="chat-input" placeholder="Ask about products, CO2 impact, or get recommendations..." />
+                        <button id="send-button">Send</button>
+                    </div>
+                </div>
+
+
+                <div class="product-grid" id="product-grid"></div>
+
+                <div class="features">
+                    <h3>🌿 Environmental Features</h3>
+                    <ul>
+                        <li>CO2 impact analysis for products</li>
+                        <li>Sustainable alternatives suggestions</li>
+                        <li>Carbon footprint tracking</li>
+                        <li>Eco-friendly shopping recommendations</li>
+                    </ul>
+                </div>
+            </section>
         </div>
     </div>
     
