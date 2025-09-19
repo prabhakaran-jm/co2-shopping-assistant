@@ -69,7 +69,6 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown."""
     # Startup
     logger.info("Starting CO2-Aware Shopping Assistant")
-    print("LIFESPAN: Starting CO2-Aware Shopping Assistant")
     
     try:
         # Initialize MCP Servers
@@ -108,12 +107,10 @@ async def lifespan(app: FastAPI):
         
         # Register all agents with A2A protocol
         logger.info("Registering agents with A2A protocol...")
-        print("LIFESPAN: Registering agents with A2A protocol...")
         for agent_name, agent_instance in agents.items():
             if agent_name != "host":  # Don't register the host agent itself
                 await a2a_protocol.register_agent(agent_name, agent_instance)
                 logger.info(f"Registered agent: {agent_name}")
-                print(f"LIFESPAN: Registered agent: {agent_name}")
         
         # Update host agent with A2A protocol reference
         agents["host"].a2a_protocol = a2a_protocol
@@ -247,13 +244,10 @@ async def chat_endpoint(payload: Dict[str, Any], request: Request):
             raise HTTPException(status_code=400, detail="Message is required")
         
         logger.info("Processing user message", message=user_message, session_id=session_id)
-        print(f"MAIN: Processing user message: {user_message}")
         
         # Route to host agent for processing
         host_agent = agents["host"]
-        print(f"MAIN: Calling host agent process_message")
         response = await host_agent.process_message(user_message, session_id)
-        print(f"MAIN: Received response from host agent: {type(response)}")
         
         # Return JSON with a Set-Cookie for assistant_sid to keep sessions consistent
         data = {

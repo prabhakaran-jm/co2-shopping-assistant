@@ -9,6 +9,7 @@ class CO2ShoppingAssistant {
         this.shippingPanel = document.getElementById('shipping-impact');
         this.shippingOptionsEl = document.getElementById('shipping-options');
         this.shippingSummaryEl = document.getElementById('shipping-summary');
+        this.connectionStatus = document.getElementById('connection-status');
         // Start at 0; do not persist across sessions to avoid stale values
         this.totalCO2Saved = 0;
         this.co2Label = 'CO₂';
@@ -25,6 +26,9 @@ class CO2ShoppingAssistant {
         
         // Add before/after comparison functionality
         this.addComparisonButtons();
+        
+        // Check server connectivity
+        this.checkServerConnectivity();
     }
     
     initializeEventListeners() {
@@ -83,7 +87,18 @@ class CO2ShoppingAssistant {
             // **FIXED**: Redundant call to extractAndUpdateCO2Savings was removed from here.
 
         } catch (error) {
-            this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+            let errorMessage = 'Sorry, I encountered an error. Please try again.';
+            
+            if (error.message.includes('Failed to fetch')) {
+                errorMessage = 'Unable to connect to the server. Please check if the application is running.';
+            } else if (error.message.includes('HTTP error')) {
+                errorMessage = `Server error: ${error.message}`;
+            } else if (error.message.includes('NetworkError')) {
+                errorMessage = 'Network error. Please check your connection.';
+            }
+            
+            this.addMessage('assistant', errorMessage);
+            this.logAgent(`Host Agent: Error occurred - ${error.message}`);
         } finally {
             this.sendButton.disabled = false;
         }
@@ -91,21 +106,27 @@ class CO2ShoppingAssistant {
     
     async callAPI(message) {
         const sid = this.getCookie ? this.getCookie('assistant_sid') : null;
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({ message: message, session_id: sid || undefined })
-        });
         
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({ message: message, session_id: sid || undefined })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            return data.response || 'No response received';
+        } catch (error) {
+            throw error;
         }
-        
-        const data = await response.json();
-        return data.response || 'No response received';
     }
 
     getCookie(name) {
@@ -607,6 +628,40 @@ class CO2ShoppingAssistant {
         
         this.logAgent(`Comparison Agent: Generated eco-impact comparison for ${productName}`);
         this.logAgent(`CO2 Calculator Agent: Calculated ${(productCO2 * 1.5).toFixed(1)}kg CO₂ savings vs standard alternative`);
+    }
+    
+    async checkServerConnectivity() {
+        try {
+            const response = await fetch('/api/info', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.updateConnectionStatus('connected', '🟢', 'Connected');
+                this.logAgent(`Host Agent: Connected to server - ${data.name} v${data.version}`);
+                this.logAgent(`Host Agent: Available agents: ${data.agents.join(', ')}`);
+            } else {
+                this.updateConnectionStatus('disconnected', '🔴', `Server Error (${response.status})`);
+                this.logAgent(`Host Agent: Server connection issue - HTTP ${response.status}`);
+            }
+        } catch (error) {
+            this.updateConnectionStatus('disconnected', '🔴', 'Disconnected');
+            this.logAgent(`Host Agent: Unable to connect to server - ${error.message}`);
+            this.logAgent(`Host Agent: Please ensure the application is running on the correct port`);
+        }
+    }
+    
+    updateConnectionStatus(status, icon, text) {
+        if (this.connectionStatus) {
+            this.connectionStatus.className = `connection-status ${status}`;
+            this.connectionStatus.querySelector('.status-icon').textContent = icon;
+            this.connectionStatus.querySelector('.status-text').textContent = text;
+        }
     }
 }
 

@@ -101,7 +101,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         
         try:
             logger.info("Processing user message", message=message, session_id=session_id)
-            print(f"HOST: Processing user message: {message}")
             
             # Initialize session context if needed
             if session_id not in self.session_contexts:
@@ -137,11 +136,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
             # Analyze user intent and determine routing
             intent = await self._analyze_intent(message, context)
             logger.info("Intent analyzed", intent=intent, session_id=session_id)
-            print(f"HOST: Intent analyzed: {intent}")
             
             # Route to appropriate agent(s)
             response = await self._route_request(message, intent, context, session_id)
-            print(f"HOST: Received response from routing: {type(response)}")
             
             # Update conversation history
             context["conversation_history"].append({
@@ -541,11 +538,8 @@ Always provide helpful, environmentally conscious responses that guide users tow
             Combined response from agents
         """
         primary_agent_name = intent.get("primary_agent")
-        print(f"HOST: Primary agent: {primary_agent_name}")
-        print(f"HOST: Available agents: {list(self.sub_agents.keys())}")
         
         if not primary_agent_name or primary_agent_name not in self.sub_agents:
-            print(f"HOST: Agent not found, using fallback response")
             # Fallback to general response (try LLM summarization first)
             llm_response = await self._llm_generate_text(
                 system_instruction=self.instruction,
@@ -557,14 +551,11 @@ Always provide helpful, environmentally conscious responses that guide users tow
             return await self._generate_fallback_response(message, context)
         
         try:
-            print(f"HOST: Attempting to route to {primary_agent_name}")
             # Route to primary agent
             primary_agent = self.sub_agents[primary_agent_name]
-            print(f"HOST: Found agent: {type(primary_agent)}")
             
             # Special handling for CO2 Calculator Agent to pass context
             if primary_agent_name == "CO2CalculatorAgent":
-                print(f"HOST: Calling CO2 Calculator Agent with context")
                 response = await primary_agent.process_message(message, session_id, context)
             else:
                 # Prepare task for other agents
@@ -575,16 +566,13 @@ Always provide helpful, environmentally conscious responses that guide users tow
                     "session_id": session_id,
                     "parameters": intent.get("parameters", {})
                 }
-                print(f"HOST: Prepared task: {task}")
                 
                 # Execute task using A2A protocol
                 logger.info("HostAgent: Routing request to agent", agent_name=primary_agent_name, task=task)
-                print(f"HOST: Calling A2A protocol send_request")
                 response = await self.a2a_protocol.send_request(
                     agent_name=primary_agent_name,
                     task=task
                 )
-            print(f"HOST: Received response from A2A: {type(response)}")
             logger.info("HostAgent: Received response from agent", agent_name=primary_agent_name, response_type=type(response).__name__)
             
             # Process response
@@ -609,7 +597,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
             return str(response)
                 
         except Exception as e:
-            print(f"HOST: Exception in routing: {str(e)}")
             logger.error(
                 "Agent routing failed",
                 agent_name=primary_agent_name,
@@ -871,7 +858,7 @@ I'm here to help you shop more sustainably! 🌱"""
                 }
                 
                 # If this is a follow-up question, preserve previous context
-                if current_context and self._is_follow_up_question(message):
+                if current_context and await self._is_follow_up_question(message, ""):
                     product_context["previous_context"] = current_context
                     product_context["context_type"] = "follow_up"
                 
@@ -894,23 +881,3 @@ I'm here to help you shop more sustainably! 🌱"""
         
         return None
     
-    def _is_follow_up_question(self, message: str) -> bool:
-        """
-        Check if the message is a follow-up question about a product.
-        
-        Args:
-            message: User's message
-            
-        Returns:
-            True if this appears to be a follow-up question
-        """
-        follow_up_indicators = [
-            "what about", "how about", "tell me about", "more about",
-            "co2", "carbon", "environmental", "eco", "sustainable",
-            "price", "cost", "expensive", "cheap",
-            "add to cart", "buy", "purchase", "order",
-            "compare", "alternative", "better", "vs"
-        ]
-        
-        message_lower = message.lower()
-        return any(indicator in message_lower for indicator in follow_up_indicators)
