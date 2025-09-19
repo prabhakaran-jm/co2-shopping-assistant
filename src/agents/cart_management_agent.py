@@ -143,8 +143,11 @@ Always help users make environmentally conscious cart decisions while meeting th
     async def _parse_cart_request_type(self, message: str) -> str:
         """Parse the type of cart management request."""
         message_lower = message.lower()
-        
-        if any(word in message_lower for word in ["add", "put", "include"]):
+
+        # Check for clear/empty first (before view patterns that contain "cart")
+        if any(word in message_lower for word in ["clear", "empty", "remove all"]):
+            return "clear"
+        elif any(word in message_lower for word in ["add", "put", "include"]):
             return "add"
         elif any(word in message_lower for word in ["remove", "delete", "take out"]):
             return "remove"
@@ -152,8 +155,6 @@ Always help users make environmentally conscious cart decisions while meeting th
             return "update"
         elif any(word in message_lower for word in ["view", "show", "see", "cart", "items", "show my cart"]):
             return "view"
-        elif any(word in message_lower for word in ["clear", "empty", "remove all"]):
-            return "clear"
         elif any(word in message_lower for word in ["suggest", "recommend", "optimize", "improve"]):
             return "suggest"
         else:

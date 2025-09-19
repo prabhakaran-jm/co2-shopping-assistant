@@ -409,7 +409,7 @@ class CO2ShoppingAssistant {
         const text = response.replace(/\*\*/g, '');
 
         // 1. Reset state after a successful payment or cart clearing
-        if (/Payment\s+Successful|Order\s+Confirmed|cart\s+has\s+been\s+cleared|empty\s+cart/i.test(text)) {
+        if (/Payment\s+Successful|Order\s+Confirmed|cart\s+has\s+been\s+cleared|empty\s+cart|cart\s+is\s+now\s+empty/i.test(text)) {
             this.totalCO2Impact = 0;
             this.totalCO2Saved = 0;
             this.productCO2 = 0;
@@ -424,22 +424,22 @@ class CO2ShoppingAssistant {
         // 2. Handle Cart Operations
         const isCartAddOperation = /add.*cart|cart.*add/i.test(this.lastUserMessage || '');
         const isCartRemoveOperation = /remove.*cart|cart.*remove/i.test(this.lastUserMessage || '');
-        const isCartClearOperation = /empty.*cart|clear.*cart/i.test(this.lastUserMessage || '');
-        
+        const isCartClearOperation = /empty.*cart|clear.*cart|clear.*my.*cart/i.test(this.lastUserMessage || '');
+
+        // Also check if the response indicates cart is empty
+        const isCartEmptyResponse = /cart.*empty|empty.*cart|no.*items.*cart|cart.*is.*empty/i.test(text);
+
         if (isCartAddOperation) {
             this.handleCartOperation('add', text);
             return;
-        } else if (isCartRemoveOperation) {
-            this.handleCartOperation('remove', text);
-            return;
-        } else if (isCartClearOperation) {
+        } else if (isCartRemoveOperation || isCartClearOperation || isCartEmptyResponse) {
             this.handleCartOperation('clear', text);
             return;
         }
 
         // 3. Handle other scenarios when not a cart operation (e.g., viewing a single product)
         const impactCo2Match = text.match(/(?:🌍\s*)?CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-        if (impactCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation) {
+        if (impactCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const co2Value = parseFloat(impactCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 this.productCO2 = Math.max(0, co2Value);
@@ -453,7 +453,7 @@ class CO2ShoppingAssistant {
 
         // 4. Handle a definitive "Total CO2" when not a cart operation (e.g., checkout)
         const totalCo2Match = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-        if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation) {
+        if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 // Overwrite the total impact, as this is a definitive summary from the backend
@@ -697,6 +697,12 @@ class CO2ShoppingAssistant {
     }
     
     initializeSustainabilityDashboard() {
+        // Ensure all sustainability metrics start at 0
+        this.totalCO2Saved = 0;
+        this.ecoProductsCount = 0;
+        this.sustainabilityScore = 0;
+        this.greenSavings = 0;
+        
         this.updateSustainabilityMetrics();
         this.updateEcoTips();
     }
@@ -776,7 +782,9 @@ class CO2ShoppingAssistant {
     
     resetSustainabilityMetrics() {
         this.ecoProductsCount = 0;
-        // sustainabilityScore and greenSavings are now calculated in updateSustainabilityMetrics()
+        this.sustainabilityScore = 0;
+        this.greenSavings = 0;
+        // totalCO2Saved is reset in the calling function (extractAndUpdateCO2Savings)
         this.updateSustainabilityMetrics();
     }
     
@@ -796,22 +804,33 @@ class CO2ShoppingAssistant {
                 }
             }
         } else if (operation === 'remove' || operation === 'clear') {
-            // Look for updated cart total after removal
-            const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-            if (cartTotalMatch && cartTotalMatch[1]) {
-                this.productCO2 = parseFloat(cartTotalMatch[1]);
-            } else {
-                // If no cart total found, assume cart is empty
+            // For clear operations or when cart is empty, reset everything
+            if (operation === 'clear' || /cart.*empty|empty.*cart|cart.*is.*empty/i.test(text)) {
                 this.productCO2 = 0;
+                this.totalCO2Impact = 0;
+                this.totalCO2Saved = 0;
+                this.co2Label = 'CO₂ Impact';
+                this.resetSustainabilityMetrics();
+                this.updateCO2Display();
+                return; // Don't continue with normal CO2 calculations
+            } else {
+                // Look for updated cart total after removal
+                const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+                if (cartTotalMatch && cartTotalMatch[1]) {
+                    this.productCO2 = parseFloat(cartTotalMatch[1]);
+                } else {
+                    // If no cart total found, assume cart is empty
+                    this.productCO2 = 0;
+                }
             }
         }
-        
+
         // Update total CO2 impact (consumption)
         this.totalCO2Impact = this.productCO2 + this.shippingCO2;
-        
+
         // Calculate CO2 savings (vs worst alternatives)
         this.calculateCO2Savings();
-        
+
         this.co2Label = 'Total CO₂ Impact';
         this.updateCO2Display();
     }
@@ -833,6 +852,9 @@ class CO2ShoppingAssistant {
         }
         
         this.totalCO2Saved = productSavings + shippingSavings;
+        
+        // Update sustainability dashboard immediately
+        this.updateSustainabilityMetrics();
     }
 }
 

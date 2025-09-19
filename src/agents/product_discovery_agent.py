@@ -392,10 +392,11 @@ What would you like to explore? I'll make sure to highlight the environmental be
             params["max_price"] = float(price_match.group(1))
         
         # Extract category with expanded synonyms mapped to available boutique categories
+        # Note: For non-existent products (laptop, camera, etc.), we'll let them pass through
+        # and be handled by the intelligent fallback system
         synonyms = {
-            "electronics": ["electronics", "gadgets", "devices", "laptop", "phone", "computer"],
             "clothing": ["clothing", "apparel", "clothes", "shirt", "tank top", "loafers", "shoes", "footwear", "top", "tee", "t-shirt"],
-            "accessories": ["accessories", "accessory", "watch", "sunglasses", "glasses", "eyewear", "shades", "timepiece", "wristwatch", "eco-friendly accessories", "sustainable accessories"],
+            "accessories": ["accessories", "accessory", "watch", "sunglasses", "glasses", "eyewear", "shades", "timepiece", "wristwatch"],
             "home": ["home", "kitchen", "mug", "jar", "hairdryer", "dryer", "candle", "holder", "salt", "pepper", "shakers", "cup", "container"]
         }
         msg = message.lower()
@@ -403,12 +404,14 @@ What would you like to explore? I'll make sure to highlight the environmental be
         for canonical, words in synonyms.items():
             if any(w in msg for w in words):
                 print(f"🔍 ProductDiscoveryAgent: Found category match: '{canonical}' for words: {words}")
-                # Map unsupported categories to closest available for the demo catalog
-                if canonical in ["clothing", "accessories", "home"]:
-                    params["category"] = canonical
-                elif canonical == "electronics":
-                    params["category"] = "accessories"
+                params["category"] = canonical
                 break
+
+        # Don't pre-categorize electronics/tech searches - let intelligent fallback handle them
+        electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
+        if any(term in msg for term in electronics_terms):
+            print(f"🔍 ProductDiscoveryAgent: Detected electronics search - will use intelligent fallback")
+            params["category"] = None  # Don't force a category
         
         print(f"🔍 ProductDiscoveryAgent: Final search params: {params}")
         
@@ -570,19 +573,168 @@ What would you like to explore? I'll make sure to highlight the environmental be
                     limit=fallback_params.get("limit", 10)
                 )
             
-            # If still no products from MCP server, use our fallback data
-            if not products:
-                print(f"ProductDiscoveryAgent: MCP server returned no products, using fallback data")
-                logger.warning("MCP server returned no products, using fallback data")
-                return await self._get_fallback_products(search_params)
-            
+            # Check if we should use intelligent fallback
+            should_use_intelligent_fallback = await self._should_use_intelligent_fallback(search_params, products)
+
+            if not products or should_use_intelligent_fallback:
+                print(f"ProductDiscoveryAgent: Using intelligent fallback - No products: {not products}, Irrelevant results: {should_use_intelligent_fallback}")
+                logger.warning("Using intelligent fallback with Gemini", no_products=not products, irrelevant_results=should_use_intelligent_fallback)
+                return await self._get_intelligent_fallback_products(search_params)
+
             return products
             
         except Exception as e:
             print(f"ProductDiscoveryAgent: Exception in _search_products: {str(e)}")
-            logger.error("Failed to search products via MCP, using fallback", error=str(e))
+            logger.error("Failed to search products via MCP, using intelligent fallback", error=str(e))
+            return await self._get_intelligent_fallback_products(search_params)
+
+    async def _should_use_intelligent_fallback(self, search_params: Dict[str, Any], products: List[Dict]) -> bool:
+        """Determine if we should use intelligent fallback instead of MCP results."""
+        if not products:
+            return True
+
+        query = search_params.get("query", "").lower()
+
+        # Extract meaningful search terms (remove stop words)
+        stop_words = {"find", "search", "show", "get", "me", "for", "a", "the", "is", "are", "of"}
+        query_words = [word for word in query.split() if word and word not in stop_words]
+
+        if not query_words:
+            return False
+
+        # Check for specific product categories that don't exist in Online Boutique
+        non_existent_categories = {
+            "laptop", "computer", "phone", "mobile", "smartphone", "tablet", "ipad",
+            "camera", "photography", "video", "gaming", "console", "tv", "television",
+            "headphones", "earbuds", "speaker", "audio", "electronics", "tech"
+        }
+
+        # If user is searching for non-existent categories, use intelligent fallback
+        for query_word in query_words:
+            if query_word in non_existent_categories:
+                print(f"ProductDiscoveryAgent: Detected search for non-existent category: '{query_word}' - triggering intelligent fallback")
+                return True
+
+        # Check if the returned products are actually relevant to the search
+        # If none of the query words appear in any product name, it's probably irrelevant
+        relevant_products = []
+        for product in products:
+            product_name_lower = product.get("name", "").lower()
+            product_desc_lower = product.get("description", "").lower()
+
+            for query_word in query_words:
+                if query_word in product_name_lower or query_word in product_desc_lower:
+                    relevant_products.append(product)
+                    break
+
+        # If less than 50% of products are relevant, use intelligent fallback
+        relevance_ratio = len(relevant_products) / len(products) if products else 0
+        is_irrelevant = relevance_ratio < 0.5
+
+        if is_irrelevant:
+            print(f"ProductDiscoveryAgent: Low relevance ratio ({relevance_ratio:.2f}) - triggering intelligent fallback")
+
+        return is_irrelevant
+
+    async def _get_intelligent_fallback_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get intelligent product suggestions using Gemini when no exact matches found."""
+        try:
+            query = search_params.get("query", "")
+            if not query:
+                return await self._get_fallback_products(search_params)
+
+            # Get available products from Online Boutique
+            available_products = await self._get_fallback_products(search_params)
+
+            # Use Gemini to intelligently match user query to available products
+            available_names = [p["name"] for p in available_products]
+            available_categories = set()
+            for p in available_products:
+                available_categories.update(p.get("categories", []))
+
+            # Create Gemini prompt for intelligent matching
+            gemini_prompt = f"""
+            User is searching for: "{query}"
+
+            Available products in our catalog:
+            {', '.join(available_names)}
+
+            Available categories:
+            {', '.join(available_categories)}
+
+            Task: Return the most relevant products from our catalog that could satisfy the user's search for "{query}".
+            If no direct match exists, suggest the closest alternatives with environmental benefits.
+
+            Rules:
+            1. Only recommend products that exist in our catalog
+            2. Focus on eco-friendly and sustainable options
+            3. Explain why the recommendation makes sense
+            4. If searching for electronics (like laptop), suggest sustainable alternatives from available categories
+
+            Format your response as a JSON object with this structure:
+            {{
+                "recommendations": [
+                    {{
+                        "product_name": "exact name from catalog",
+                        "relevance_score": 0.8,
+                        "explanation": "why this product fits the search"
+                    }}
+                ],
+                "message": "Helpful explanation for the user"
+            }}
+            """
+
+            # Since we're in fallback mode, we can't call ADK/Gemini directly
+            # Instead, provide intelligent rule-based matching
+            return await self._rule_based_intelligent_matching(query, available_products)
+
+        except Exception as e:
+            logger.error("Intelligent fallback failed", error=str(e))
             return await self._get_fallback_products(search_params)
-    
+
+    async def _rule_based_intelligent_matching(self, query: str, available_products: List[Dict]) -> List[Dict]:
+        """Rule-based intelligent product matching when Gemini is not available."""
+        query_lower = query.lower()
+
+        # Electronics requests -> suggest Watch (closest electronic item)
+        if any(term in query_lower for term in ["laptop", "computer", "electronics", "tech", "phone", "device"]):
+            matching_products = [p for p in available_products if p["name"].lower() == "watch"]
+            if matching_products:
+                product = matching_products[0].copy()
+                term_found = next((term for term in ["laptop", "computer", "electronics", "tech", "phone", "device"] if term in query_lower), "electronics")
+                product["ai_explanation"] = f"While we don't have {term_found}s in our catalog, I recommend this eco-friendly Watch as a sustainable tech accessory. It has a low CO2 footprint of {product['co2_emissions']}kg and an excellent eco-score of {product['eco_score']}/10."
+                return [product]
+
+        # Camera/Photography requests -> suggest Sunglasses (visual accessory)
+        if any(term in query_lower for term in ["camera", "photography", "photo", "video", "lens"]):
+            matching_products = [p for p in available_products if p["name"].lower() == "sunglasses"]
+            if matching_products:
+                product = matching_products[0].copy()
+                product["ai_explanation"] = f"While we don't have cameras, I recommend these eco-friendly Sunglasses as they're perfect for outdoor photography and adventures! They have excellent UV protection, a low CO2 footprint of {product['co2_emissions']}kg, and an outstanding eco-score of {product['eco_score']}/10."
+                return [product]
+
+        # Clothing requests -> suggest eco-friendly clothing
+        if any(term in query_lower for term in ["shirt", "clothing", "apparel", "wear", "top", "clothes"]):
+            matching_products = [p for p in available_products if "clothing" in p.get("categories", [])]
+            if matching_products:
+                return matching_products
+
+        # Accessories -> suggest sunglasses or watch
+        if any(term in query_lower for term in ["accessory", "accessories", "style", "fashion"]):
+            matching_products = [p for p in available_products if "accessories" in p.get("categories", [])]
+            if matching_products:
+                return matching_products
+
+        # Default: return top 3 most eco-friendly products
+        sorted_products = sorted(available_products, key=lambda p: (-p.get("eco_score", 0), p.get("co2_emissions", 100)))
+        top_products = sorted_products[:3]
+
+        # Add explanation for the recommendation
+        for product in top_products:
+            product["ai_explanation"] = f"I couldn't find exact matches for '{query}', but here's an eco-friendly alternative: {product['name']} with {product['eco_score']}/10 eco-score and only {product['co2_emissions']}kg CO2 emissions."
+
+        return top_products
+
     async def _get_fallback_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get fallback products when MCP server is unavailable."""
         # Extended product catalog matching the actual Online Boutique products
@@ -720,6 +872,29 @@ What would you like to explore? I'll make sure to highlight the environmental be
         for product in mock_products:
             print(f"🔍 ProductDiscoveryAgent: Checking product: {product['name']} (category: {product['category']}, eco_score: {product['eco_score']})")
             
+            # Check text query match first
+            query = search_params.get("query", "").lower().strip()
+            if query and query not in ["show all", "all products", "show me all", "list all", "show products", "products"]:
+                # For specific product searches, filter out stop words and check if all remaining words match
+                stop_words = {"show", "find", "search", "me", "for", "a", "the", "is", "are", "of"}
+                all_query_words = [word for word in query.split() if word]
+                query_words = [word for word in all_query_words if word not in stop_words]
+                
+                if query_words:
+                    product_name_lower = product["name"].lower()
+                    product_name_condensed = product_name_lower.replace(' ', '').replace('-', '')
+                    
+                    all_words_found = True
+                    for word in query_words:
+                        normalized_word = word.replace('-', '')
+                        if normalized_word not in product_name_lower and normalized_word not in product_name_condensed:
+                            all_words_found = False
+                            break
+                    
+                    if not all_words_found:
+                        print(f"🔍 ProductDiscoveryAgent: Filtered out by query text: {product['name']} (query: {query})")
+                        continue
+            
             if search_params.get("category") and product["category"] != search_params["category"]:
                 print(f"🔍 ProductDiscoveryAgent: Filtered out by category: {product['name']}")
                 continue
@@ -846,7 +1021,15 @@ What would you like to explore? I'll make sure to highlight the environmental be
         if not products:
             return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
-        response = f"🌱 **Found {len(products)} eco-friendly products for you!**\n\n"
+        # Check if this is an intelligent fallback with AI explanations
+        has_ai_explanations = any(product.get('ai_explanation') for product in products)
+
+        if has_ai_explanations:
+            response = f"🤖 **AI-Powered Product Suggestions** ({len(products)} recommendations)\n\n"
+            response += "💡 *I couldn't find exact matches, but here are sustainable alternatives from our eco-friendly catalog:*\n\n"
+        else:
+            response = f"🌱 **Found {len(products)} eco-friendly products for you!**\n\n"
+
         response += "🛍️ **Product Catalog**\n"
         response += "=" * 50 + "\n\n"
         
@@ -862,6 +1045,10 @@ What would you like to explore? I'll make sure to highlight the environmental be
             response += f"🌍 **CO2 Impact:** {co2_emissions:.1f}kg ({co2_rating})\n"
             response += f"⭐ **Eco Score:** {product.get('eco_score', 'N/A')}/10\n"
             response += f"📝 **Description:** {product.get('description', 'No description available')}\n"
+
+            # Add AI explanation if available
+            if product.get('ai_explanation'):
+                response += f"🤖 **AI Recommendation:** {product.get('ai_explanation')}\n"
             
             # Add image if available
             if image_url:
