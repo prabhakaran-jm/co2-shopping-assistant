@@ -10,14 +10,30 @@ class CO2ShoppingAssistant {
         this.shippingOptionsEl = document.getElementById('shipping-options');
         this.shippingSummaryEl = document.getElementById('shipping-summary');
         this.connectionStatus = document.getElementById('connection-status');
+        
+        // Sustainability Dashboard elements
+        this.totalCO2SavedEl = document.getElementById('total-co2-saved');
+        this.ecoProductsCountEl = document.getElementById('eco-products-count');
+        this.sustainabilityScoreEl = document.getElementById('sustainability-score');
+        this.greenSavingsEl = document.getElementById('green-savings');
+        this.ecoProgressFillEl = document.getElementById('eco-progress-fill');
+        this.ecoProgressTextEl = document.getElementById('eco-progress-text');
+        this.ecoTipsEl = document.getElementById('eco-tips');
         // Start at 0; do not persist across sessions to avoid stale values
-        this.totalCO2Saved = 0;
-        this.co2Label = 'CO₂';
+        this.totalCO2Impact = 0;  // Total CO2 impact (consumption)
+        this.totalCO2Saved = 0;   // Total CO2 savings (vs worst alternatives)
+        this.co2Label = 'CO₂ Impact';
         this.productCO2 = 0;  // Track product CO2 separately
         this.shippingCO2 = 0; // Track shipping CO2 separately
         this.selectedShippingOption = null; // Track selected shipping option name
         this.lastUserMessage = '';
         this.retry = { count: 0, max: 3, cooldownMs: 250, inFlight: false };
+        
+        // Sustainability tracking
+        this.ecoProductsCount = 0;
+        this.sustainabilityScore = 0;
+        this.greenSavings = 0;
+        this.monthlyEcoGoal = 100; // kg CO₂ saved per month
         
         this.initializeEventListeners();
         this.addWelcomeMessage();
@@ -26,6 +42,9 @@ class CO2ShoppingAssistant {
         
         // Add before/after comparison functionality
         this.addComparisonButtons();
+        
+        // Initialize sustainability dashboard
+        this.initializeSustainabilityDashboard();
         
         // Check server connectivity
         this.checkServerConnectivity();
@@ -375,6 +394,12 @@ class CO2ShoppingAssistant {
                 <span class="badge badge--eco product-eco">Eco ${product.eco}/10</span>
             </div>
         `;
+        
+        // Add click handler to update sustainability metrics
+        card.addEventListener('click', () => {
+            this.updateSustainabilityFromProduct(product);
+        });
+        
         return card;
     }
     
@@ -384,61 +409,57 @@ class CO2ShoppingAssistant {
         const text = response.replace(/\*\*/g, '');
 
         // 1. Reset state after a successful payment or cart clearing
-        if (/Payment\s+Successful|Order\s+Confirmed|cart\s+has\s+been\s+cleared/i.test(text)) {
+        if (/Payment\s+Successful|Order\s+Confirmed|cart\s+has\s+been\s+cleared|empty\s+cart/i.test(text)) {
+            this.totalCO2Impact = 0;
             this.totalCO2Saved = 0;
             this.productCO2 = 0;
             this.shippingCO2 = 0;
             this.selectedShippingOption = null;
-            this.co2Label = 'CO₂';
+            this.co2Label = 'CO₂ Impact';
             this.updateCO2Display();
+            this.resetSustainabilityMetrics();
             return;
         }
 
+        // 2. Handle Cart Operations
         const isCartAddOperation = /add.*cart|cart.*add/i.test(this.lastUserMessage || '');
-
-        // 2. Handle Product Addition to Cart (PRIORITY 1)
+        const isCartRemoveOperation = /remove.*cart|cart.*remove/i.test(this.lastUserMessage || '');
+        const isCartClearOperation = /empty.*cart|clear.*cart/i.test(this.lastUserMessage || '');
+        
         if (isCartAddOperation) {
-            // First, look for the "Total CO2" from the cart summary. This is the accumulated value.
-            const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-            
-            if (cartTotalMatch && cartTotalMatch[1]) {
-                const totalProductCO2 = parseFloat(cartTotalMatch[1]);
-                if (!Number.isNaN(totalProductCO2)) {
-                    // Set the productCO2 state to the new ACCUMULATED total from the cart.
-                    this.productCO2 = totalProductCO2;
-                    
-                    // Add the accumulated product CO2 to the existing shipping CO2.
-                    this.totalCO2Saved = this.productCO2 + this.shippingCO2;
-                    
-                    this.co2Label = 'Total CO₂';
-                    this.updateCO2Display();
-                    return; // The correct value has been found and updated.
-                }
-            }
+            this.handleCartOperation('add', text);
+            return;
+        } else if (isCartRemoveOperation) {
+            this.handleCartOperation('remove', text);
+            return;
+        } else if (isCartClearOperation) {
+            this.handleCartOperation('clear', text);
+            return;
         }
 
-        // 3. Handle other scenarios when not adding to cart (e.g., viewing a single product)
-        // This part of the logic now runs only if it's NOT a cart addition.
+        // 3. Handle other scenarios when not a cart operation (e.g., viewing a single product)
         const impactCo2Match = text.match(/(?:🌍\s*)?CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-        if (impactCo2Match && !isCartAddOperation) {
+        if (impactCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation) {
             const co2Value = parseFloat(impactCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 this.productCO2 = Math.max(0, co2Value);
-                this.totalCO2Saved = this.productCO2 + this.shippingCO2;
-                this.co2Label = this.shippingCO2 > 0 ? 'Total CO₂' : 'Product CO₂';
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                this.calculateCO2Savings();
+                this.co2Label = this.shippingCO2 > 0 ? 'Total CO₂ Impact' : 'Product CO₂ Impact';
                 this.updateCO2Display();
                 return;
             }
         }
 
-        // 4. Handle a definitive "Total CO2" when not adding to cart (e.g., checkout)
+        // 4. Handle a definitive "Total CO2" when not a cart operation (e.g., checkout)
         const totalCo2Match = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-        if (totalCo2Match && !isCartAddOperation) {
+        if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation) {
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
-                // Overwrite the total, as this is a definitive summary from the backend
-                this.totalCO2Saved = Math.max(0, co2Value);
-                this.co2Label = 'Total CO₂';
+                // Overwrite the total impact, as this is a definitive summary from the backend
+                this.totalCO2Impact = Math.max(0, co2Value);
+                this.calculateCO2Savings();
+                this.co2Label = 'Total CO₂ Impact';
                 this.updateCO2Display();
                 return;
             }
@@ -447,17 +468,18 @@ class CO2ShoppingAssistant {
     
     updateCO2Display() {
         if (this.co2SavingsElement) {
-            const label = this.co2Label || 'CO₂';
+            const label = this.co2Label || 'CO₂ Impact';
             this.co2SavingsElement.innerHTML = `
                 <div class="co2-widget">
                     <div class="co2-icon">🌱</div>
                     <div class="co2-content">
                         <div class="co2-label">${label}</div>
-                        <div class="co2-value">${this.totalCO2Saved.toFixed(1)} kg</div>
-                        ${this.totalCO2Saved > 0 ? `<div class="co2-breakdown">
+                        <div class="co2-value">${this.totalCO2Impact.toFixed(1)} kg</div>
+                        ${this.totalCO2Impact > 0 ? `<div class="co2-breakdown">
                             ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
                             ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
                         </div>` : ''}
+                        ${this.totalCO2Saved > 0 ? `<div class="co2-savings">Saved: ${this.totalCO2Saved.toFixed(1)}kg</div>` : ''}
                     </div>
                 </div>
             `;
@@ -467,9 +489,12 @@ class CO2ShoppingAssistant {
                 this.co2SavingsElement.style.transform = 'scale(1)';
             }, 200);
             
-            const impactLevel = this.getCO2ImpactLevel(this.totalCO2Saved);
+            const impactLevel = this.getCO2ImpactLevel(this.totalCO2Impact);
             this.co2SavingsElement.className = `co2-badge ${impactLevel}`;
         }
+        
+        // Update sustainability dashboard
+        this.updateSustainabilityMetrics();
     }
     
     getCO2ImpactLevel(co2Value) {
@@ -491,10 +516,15 @@ class CO2ShoppingAssistant {
                 const days = option.dataset.days;
                 const name = option.querySelector('.shipping-option__name').textContent;
                 
+                // Replace shipping CO2 (don't add to existing)
                 this.shippingCO2 = co2;
                 this.selectedShippingOption = name;
-                this.totalCO2Saved = this.productCO2 + this.shippingCO2;
-                this.co2Label = 'Total CO₂';
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                
+                // Calculate CO2 savings (vs worst alternatives)
+                this.calculateCO2Savings();
+                
+                this.co2Label = 'Total CO₂ Impact';
                 this.updateCO2Display();
                 
                 this.logAgent(`User selected: ${name} shipping (${days}, $${price}, ${co2}kg CO₂)`);
@@ -505,7 +535,9 @@ class CO2ShoppingAssistant {
     
     async sendShippingSelectionToBackend(shippingOption) {
         try {
-            await this.callAPI(`set shipping to ${shippingOption}`);
+            const response = await this.callAPI(`set shipping to ${shippingOption}`);
+            // Update CO2 based on backend response
+            this.extractAndUpdateCO2Savings(response);
         } catch (error) {
             console.error("Failed to send shipping selection to backend:", error);
         }
@@ -662,6 +694,145 @@ class CO2ShoppingAssistant {
             this.connectionStatus.querySelector('.status-icon').textContent = icon;
             this.connectionStatus.querySelector('.status-text').textContent = text;
         }
+    }
+    
+    initializeSustainabilityDashboard() {
+        this.updateSustainabilityMetrics();
+        this.updateEcoTips();
+    }
+    
+    updateSustainabilityMetrics() {
+        if (this.totalCO2SavedEl) {
+            this.totalCO2SavedEl.textContent = `${this.totalCO2Saved.toFixed(1)} kg`;
+        }
+        
+        if (this.ecoProductsCountEl) {
+            this.ecoProductsCountEl.textContent = this.ecoProductsCount;
+        }
+        
+        // Calculate sustainability score based on CO2 savings (0-100 scale)
+        // Max possible savings: 100kg (products) + 1000kg (shipping) = 1100kg
+        const maxPossibleSavings = 1100;
+        this.sustainabilityScore = Math.min(Math.round((this.totalCO2Saved / maxPossibleSavings) * 100), 100);
+        
+        if (this.sustainabilityScoreEl) {
+            this.sustainabilityScoreEl.textContent = `${this.sustainabilityScore}/100`;
+        }
+        
+        // Calculate green savings based on actual CO2 savings ($0.10 per kg CO₂ saved)
+        this.greenSavings = this.totalCO2Saved * 0.1;
+        
+        if (this.greenSavingsEl) {
+            this.greenSavingsEl.textContent = `$${this.greenSavings.toFixed(2)}`;
+        }
+        
+        this.updateEcoProgress();
+    }
+    
+    updateEcoProgress() {
+        const progressPercentage = Math.min((this.totalCO2Saved / this.monthlyEcoGoal) * 100, 100);
+        
+        if (this.ecoProgressFillEl) {
+            this.ecoProgressFillEl.style.width = `${progressPercentage}%`;
+        }
+        
+        if (this.ecoProgressTextEl) {
+            this.ecoProgressTextEl.textContent = `${Math.round(progressPercentage)}% Complete`;
+        }
+    }
+    
+    updateEcoTips() {
+        const tips = [
+            "Choose eco-friendly shipping options",
+            "Look for products with low CO₂ impact", 
+            "Consider sustainable alternatives",
+            "Bundle orders to reduce shipping emissions",
+            "Support brands with green certifications",
+            "Opt for renewable energy sources"
+        ];
+        
+        if (this.ecoTipsEl) {
+            // Show 3 random tips
+            const shuffledTips = tips.sort(() => 0.5 - Math.random());
+            const selectedTips = shuffledTips.slice(0, 3);
+            
+            this.ecoTipsEl.innerHTML = selectedTips
+                .map(tip => `<div class="tip-item">${tip}</div>`)
+                .join('');
+        }
+    }
+    
+    updateSustainabilityFromProduct(product) {
+        // Update metrics when a product is added
+        if (product.eco >= 7) {
+            this.ecoProductsCount++;
+        }
+        
+        // Sustainability score and green savings are now calculated in updateSustainabilityMetrics()
+        // based on actual CO2 savings rather than individual product eco ratings
+        
+        this.updateSustainabilityMetrics();
+    }
+    
+    resetSustainabilityMetrics() {
+        this.ecoProductsCount = 0;
+        // sustainabilityScore and greenSavings are now calculated in updateSustainabilityMetrics()
+        this.updateSustainabilityMetrics();
+    }
+    
+    handleCartOperation(operation, response) {
+        const text = response.replace(/\*\*/g, '');
+        
+        if (operation === 'add') {
+            // Look for cart total or individual product CO2
+            const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (cartTotalMatch && cartTotalMatch[1]) {
+                this.productCO2 = parseFloat(cartTotalMatch[1]);
+            } else {
+                // Look for individual product CO2 and add it
+                const productCo2Match = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+                if (productCo2Match && productCo2Match[1]) {
+                    this.productCO2 += parseFloat(productCo2Match[1]);
+                }
+            }
+        } else if (operation === 'remove' || operation === 'clear') {
+            // Look for updated cart total after removal
+            const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+            if (cartTotalMatch && cartTotalMatch[1]) {
+                this.productCO2 = parseFloat(cartTotalMatch[1]);
+            } else {
+                // If no cart total found, assume cart is empty
+                this.productCO2 = 0;
+            }
+        }
+        
+        // Update total CO2 impact (consumption)
+        this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+        
+        // Calculate CO2 savings (vs worst alternatives)
+        this.calculateCO2Savings();
+        
+        this.co2Label = 'Total CO₂ Impact';
+        this.updateCO2Display();
+    }
+    
+    calculateCO2Savings() {
+        // Calculate savings compared to worst alternatives
+        let totalSavings = 0;
+        
+        // Product savings: compare to worst-case products (assume 100kg baseline for worst products)
+        const worstProductCO2 = 100; // Worst-case product baseline
+        const productSavings = Math.max(0, worstProductCO2 - this.productCO2);
+        
+        // Shipping savings: only calculate if shipping is actually selected
+        let shippingSavings = 0;
+        if (this.selectedShippingOption) {
+            // Compare to Express (worst option = 1000kg)
+            const worstShippingCO2 = 1000;
+            shippingSavings = Math.max(0, worstShippingCO2 - this.shippingCO2);
+        }
+        
+        this.totalCO2Saved = productSavings + shippingSavings;
     }
 }
 

@@ -255,6 +255,134 @@ body {
     margin-top: 2px;
 }
 
+/* Sustainability Dashboard Styles */
+.sustainability-dashboard {
+    background: #f6f9f6;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 16px;
+}
+
+.sustainability-dashboard__header {
+    font-weight: 700;
+    color: #2d5a27;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+}
+
+.sustainability-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.metric-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.metric-card:hover {
+    border-color: #4CAF50;
+    box-shadow: 0 2px 4px rgba(76, 175, 80, 0.2);
+}
+
+.metric-icon {
+    font-size: 1.2rem;
+    min-width: 20px;
+    text-align: center;
+}
+
+.metric-content {
+    flex: 1;
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.metric-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #2d5a27;
+}
+
+.sustainability-progress {
+    margin-bottom: 12px;
+}
+
+.progress-label {
+    font-size: 0.75rem;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.progress-bar {
+    background: #e0e0e0;
+    border-radius: 10px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 0.7rem;
+    color: #666;
+    text-align: center;
+}
+
+.sustainability-tips {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.tips-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #2d5a27;
+    margin-bottom: 6px;
+}
+
+.tips-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tip-item {
+    font-size: 0.7rem;
+    color: #666;
+    padding: 2px 0;
+    position: relative;
+    padding-left: 12px;
+}
+
+.tip-item:before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: #4CAF50;
+    font-weight: bold;
+}
+
 .product-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -747,6 +875,13 @@ body {
     font-size: 0.7rem;
     opacity: 0.8;
     line-height: 1.2;
+}
+
+.co2-savings {
+    font-size: 0.7rem;
+    color: #4CAF50;
+    font-weight: 600;
+    margin-top: 2px;
 }
 
 /* CO2 Impact Level Colors */
