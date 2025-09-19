@@ -410,7 +410,8 @@ What would you like to explore? I'll make sure to highlight the environmental be
         # Don't pre-categorize electronics/tech searches - let intelligent fallback handle them
         electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
         if any(term in msg for term in electronics_terms):
-            print(f"🔍 ProductDiscoveryAgent: Detected electronics search - will use intelligent fallback")
+            print(f"🔍 🚨 DETECTED ELECTRONICS SEARCH FOR: {msg} - WILL USE INTELLIGENT FALLBACK 🚨")
+            logger.info(f"DETECTED ELECTRONICS SEARCH FOR: {msg} - WILL USE INTELLIGENT FALLBACK")
             params["category"] = None  # Don't force a category
         
         print(f"🔍 ProductDiscoveryAgent: Final search params: {params}")
@@ -428,11 +429,14 @@ What would you like to explore? I'll make sure to highlight the environmental be
             "bamboo glass jar", "jar", "container", "bottle", "vessel"
         ]
         
-        # Find the first product keyword in the message
-        for keyword in product_keywords:
-            if keyword in msg:
-                params["query"] = keyword
-                break
+        # Find the first product keyword in the message, but preserve original query for electronics
+        electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
+        if not any(term in msg for term in electronics_terms):
+            # Only extract product keywords for non-electronics searches
+            for keyword in product_keywords:
+                if keyword in msg:
+                    params["query"] = keyword
+                    break
         
         # Check for eco-friendly keywords
         eco_keywords = ["eco", "green", "sustainable", "environmental", "organic", "recycled"]
@@ -612,7 +616,8 @@ What would you like to explore? I'll make sure to highlight the environmental be
         # If user is searching for non-existent categories, use intelligent fallback
         for query_word in query_words:
             if query_word in non_existent_categories:
-                print(f"ProductDiscoveryAgent: Detected search for non-existent category: '{query_word}' - triggering intelligent fallback")
+                print(f"🚨🚨 TRIGGERING INTELLIGENT FALLBACK FOR NON-EXISTENT CATEGORY: '{query_word}' 🚨🚨")
+                logger.info(f"TRIGGERING INTELLIGENT FALLBACK FOR NON-EXISTENT CATEGORY: {query_word}")
                 return True
 
         # Check if the returned products are actually relevant to the search
@@ -639,12 +644,18 @@ What would you like to explore? I'll make sure to highlight the environmental be
     async def _get_intelligent_fallback_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get intelligent product suggestions using Gemini when no exact matches found."""
         try:
+            print(f"🤖🤖 INTELLIGENT FALLBACK TRIGGERED! search_params: {search_params} 🤖🤖")
+            logger.info(f"INTELLIGENT FALLBACK TRIGGERED! search_params: {search_params}")
+
             query = search_params.get("query", "")
             if not query:
+                print("🤖 No query provided, using regular fallback")
                 return await self._get_fallback_products(search_params)
 
-            # Get available products from Online Boutique
-            available_products = await self._get_fallback_products(search_params)
+            # Get available products from Online Boutique (without query filtering for intelligent fallback)
+            fallback_params = search_params.copy()
+            fallback_params["query"] = ""  # Don't filter by query for intelligent fallback
+            available_products = await self._get_fallback_products(fallback_params)
 
             # Use Gemini to intelligently match user query to available products
             available_names = [p["name"] for p in available_products]
@@ -695,22 +706,39 @@ What would you like to explore? I'll make sure to highlight the environmental be
     async def _rule_based_intelligent_matching(self, query: str, available_products: List[Dict]) -> List[Dict]:
         """Rule-based intelligent product matching when Gemini is not available."""
         query_lower = query.lower()
+        print(f"🤖 RULE-BASED MATCHING: Query='{query}', Available products: {[p['name'] for p in available_products]}")
+
+        # First, check for exact product name matches
+        exact_matches = [p for p in available_products if p["name"].lower() == query_lower]
+        if exact_matches:
+            print(f"🤖 EXACT MATCH FOUND: {exact_matches[0]['name']}")
+            return exact_matches
+
+        # Then, check for partial name matches
+        partial_matches = [p for p in available_products if query_lower in p["name"].lower()]
+        if partial_matches:
+            print(f"🤖 PARTIAL MATCH FOUND: {[p['name'] for p in partial_matches]}")
+            return partial_matches
 
         # Electronics requests -> suggest Watch (closest electronic item)
         if any(term in query_lower for term in ["laptop", "computer", "electronics", "tech", "phone", "device"]):
+            print(f"🤖 ELECTRONICS DETECTED: {query_lower}")
             matching_products = [p for p in available_products if p["name"].lower() == "watch"]
             if matching_products:
                 product = matching_products[0].copy()
                 term_found = next((term for term in ["laptop", "computer", "electronics", "tech", "phone", "device"] if term in query_lower), "electronics")
                 product["ai_explanation"] = f"While we don't have {term_found}s in our catalog, I recommend this eco-friendly Watch as a sustainable tech accessory. It has a low CO2 footprint of {product['co2_emissions']}kg and an excellent eco-score of {product['eco_score']}/10."
+                print(f"🤖 RETURNING ELECTRONICS RECOMMENDATION: {product['name']}")
                 return [product]
 
         # Camera/Photography requests -> suggest Sunglasses (visual accessory)
         if any(term in query_lower for term in ["camera", "photography", "photo", "video", "lens"]):
+            print(f"🤖 CAMERA DETECTED: {query_lower}")
             matching_products = [p for p in available_products if p["name"].lower() == "sunglasses"]
             if matching_products:
                 product = matching_products[0].copy()
                 product["ai_explanation"] = f"While we don't have cameras, I recommend these eco-friendly Sunglasses as they're perfect for outdoor photography and adventures! They have excellent UV protection, a low CO2 footprint of {product['co2_emissions']}kg, and an outstanding eco-score of {product['eco_score']}/10."
+                print(f"🤖 RETURNING CAMERA RECOMMENDATION: {product['name']}")
                 return [product]
 
         # Clothing requests -> suggest eco-friendly clothing
@@ -944,16 +972,26 @@ What would you like to explore? I'll make sure to highlight the environmental be
                     "price": float(product.get("price", 0.0)),
                     "co2_emissions": float(product.get("co2_emissions", 50.0)),
                     "eco_score": int(product.get("eco_score", 5)),
-                    "co2_rating": "Medium",
+                    "co2_rating": self._calculate_co2_rating(float(product.get("co2_emissions", 50.0))),
                     "description": product.get("description", "No description available"),
                     "image_url": "",
                     "id": product.get("id", ""),
                     "categories": [product.get("category", "")] if product.get("category") else [],
                     "original": product,
+                    "ai_explanation": product.get("ai_explanation") if product.get("ai_explanation") and product.get("ai_explanation").strip() else None,  # Preserve AI explanation only if present and not empty
                 }
                 fallback_products.append(fallback_product)
             return fallback_products
         return normalized
+    
+    def _calculate_co2_rating(self, co2_emissions: float) -> str:
+        """Calculate CO2 rating based on emissions."""
+        if co2_emissions <= 30.0:
+            return "Low"
+        elif co2_emissions <= 60.0:
+            return "Medium"
+        else:
+            return "High"
     
     async def _get_recommendations(self, rec_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get product recommendations."""
@@ -1023,6 +1061,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
 
         # Check if this is an intelligent fallback with AI explanations
         has_ai_explanations = any(product.get('ai_explanation') for product in products)
+        
 
         if has_ai_explanations:
             response = f"🤖 **AI-Powered Product Suggestions** ({len(products)} recommendations)\n\n"
@@ -1042,7 +1081,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
             # Create product card
             response += f"📦 **{i}. {product.get('name', 'N/A')}**\n"
             response += f"💰 **Price:** ${price_value:.2f}\n"
-            response += f"🌍 **CO2 Impact:** {co2_emissions:.1f}kg ({co2_rating})\n"
+            response += f"🌍 **CO2 Impact:** {co2_emissions:.1f}kg ({co2_rating} Impact)\n"
             response += f"⭐ **Eco Score:** {product.get('eco_score', 'N/A')}/10\n"
             response += f"📝 **Description:** {product.get('description', 'No description available')}\n"
 

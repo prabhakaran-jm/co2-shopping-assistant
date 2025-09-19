@@ -83,6 +83,7 @@ def normalize_product(product: Dict[str, Any]) -> Dict[str, Any]:
         "id": product.get("id", product.get("item_id", "")),
         "categories": product.get("categories", []),
         "original": product,
+        "ai_explanation": product.get("ai_explanation") if product.get("ai_explanation") and product.get("ai_explanation").strip() else None,  # Preserve AI explanation only if present and not empty
     }
     return normalized
 

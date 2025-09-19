@@ -135,6 +135,7 @@ Always provide helpful, environmentally conscious responses that guide users tow
             
             # Analyze user intent and determine routing
             intent = await self._analyze_intent(message, context)
+            print(f"🏠🏠 HOST AGENT: Intent analyzed for '{message}': {intent} 🏠🏠")
             logger.info("Intent analyzed", intent=intent, session_id=session_id)
             
             # Route to appropriate agent(s)
@@ -183,6 +184,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
             Dictionary containing intent analysis
         """
         message_lower = message.lower().strip()
+        
+        # DEBUG: Print the message being analyzed
+        print(f"🔍 DEBUG: Analyzing message: '{message}'")
         
         # Intent classification based on keywords and patterns
         intent = {
@@ -289,7 +293,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "find", "search", "look for", "show me", "show", "recommend", "suggest",
             "product", "item", "buy", "purchase", "catalog", "browse",
             "sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes",
-            "electronics", "clothing", "accessories", "home", "sports"
+            "electronics", "clothing", "accessories", "home", "sports",
+            # Add non-existent products to ensure they get routed to ProductDiscoveryAgent
+            "laptop", "computer", "phone", "camera", "tablet", "gaming", "tech"
         ]
         
         # CO2/environmental patterns
@@ -333,6 +339,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
         checkout_score = sum(1 for keyword in checkout_keywords if keyword in message_lower)
         comparison_score = sum(1 for keyword in comparison_keywords if keyword in message_lower)
         
+        # DEBUG: Print keyword matching scores
+        print(f"🔍 DEBUG: Keyword scores - Product: {product_score}, CO2: {co2_score}, Cart: {cart_score}, Checkout: {checkout_score}, Comparison: {comparison_score}")
+        
         # Prefer discovery for recommendation phrasing
         if ("recommend" in message_lower or "suggest" in message_lower):
             intent["primary_agent"] = "ProductDiscoveryAgent"
@@ -360,6 +369,9 @@ Always provide helpful, environmentally conscious responses that guide users tow
         
         primary_agent = max(scores, key=scores.get)
         max_score = scores[primary_agent]
+        
+        # DEBUG: Print routing decision
+        print(f"🔍 DEBUG: Routing decision - Primary agent: {primary_agent}, Max score: {max_score}")
         
         if max_score > 0:
             intent["primary_agent"] = primary_agent
@@ -403,7 +415,7 @@ Always provide helpful, environmentally conscious responses that guide users tow
         # Check if message contains product names from last response
         if last_response:
             # Extract product names from last response (simplified)
-            product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes"]
+            product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes", "laptop", "computer", "phone", "camera"]
             for product in product_names:
                 if product in message_lower and product in last_response.lower():
                     return True
@@ -446,7 +458,7 @@ Always provide helpful, environmentally conscious responses that guide users tow
         message_lower = message.lower()
         
         # Common product names
-        product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes", "electronics", "clothing"]
+        product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes", "electronics", "clothing", "laptop", "computer", "phone", "camera"]
         
         # Check if message contains a product name
         for product in product_names:
@@ -486,7 +498,7 @@ Always provide helpful, environmentally conscious responses that guide users tow
                 parameters["category"] = category_match.group(1)
             
             # Extract specific product names
-            product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes"]
+            product_names = ["sunglasses", "loafers", "watch", "hairdryer", "tank top", "shoes", "laptop", "computer", "phone", "camera"]
             for product in product_names:
                 if product in message.lower():
                     parameters["query"] = product
