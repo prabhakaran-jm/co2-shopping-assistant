@@ -174,13 +174,10 @@ Always explain why certain products are more environmentally friendly and help u
     async def _handle_product_search(self, message: str, session_id: str) -> str:
         """Handle product search requests."""
         try:
-            print(f"ProductDiscoveryAgent: _handle_product_search called with message: '{message}'")
             logger.info("ProductDiscoveryAgent: Handling product search", message=message)
             
             # Extract search parameters
-            print("ProductDiscoveryAgent: Extracting search parameters...")
             search_params = await self._extract_search_parameters(message)
-            print(f"ProductDiscoveryAgent: Extracted search parameters: {search_params}")
             logger.info("ProductDiscoveryAgent: Extracted search parameters", search_params=search_params)
             
             # Search products using boutique MCP
@@ -198,7 +195,6 @@ Always explain why certain products are more environmentally friendly and help u
             return response
             
         except Exception as e:
-            print(f"ProductDiscoveryAgent: Exception in _handle_product_search: {str(e)}")
             logger.error("Product search failed", error=str(e))
             return "I encountered an error while searching for products. Please try again."
     
@@ -384,7 +380,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
             "sort_by": "relevance"
         }
         
-        print(f"🔍 ProductDiscoveryAgent: Extracting search parameters for: '{message}'")
         
         # Extract price range
         price_match = re.search(r'\$(\d+(?:\.\d{2})?)', message)
@@ -400,21 +395,17 @@ What would you like to explore? I'll make sure to highlight the environmental be
             "home": ["home", "kitchen", "mug", "jar", "hairdryer", "dryer", "candle", "holder", "salt", "pepper", "shakers", "cup", "container"]
         }
         msg = message.lower()
-        print(f"🔍 ProductDiscoveryAgent: Checking category synonyms for: '{msg}'")
         for canonical, words in synonyms.items():
             if any(w in msg for w in words):
-                print(f"🔍 ProductDiscoveryAgent: Found category match: '{canonical}' for words: {words}")
                 params["category"] = canonical
                 break
 
         # Don't pre-categorize electronics/tech searches - let intelligent fallback handle them
         electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
         if any(term in msg for term in electronics_terms):
-            print(f"🔍 🚨 DETECTED ELECTRONICS SEARCH FOR: {msg} - WILL USE INTELLIGENT FALLBACK 🚨")
             logger.info(f"DETECTED ELECTRONICS SEARCH FOR: {msg} - WILL USE INTELLIGENT FALLBACK")
             params["category"] = None  # Don't force a category
         
-        print(f"🔍 ProductDiscoveryAgent: Final search params: {params}")
         
         # Extract specific product query if found
         product_keywords = [
@@ -429,14 +420,20 @@ What would you like to explore? I'll make sure to highlight the environmental be
             "bamboo glass jar", "jar", "container", "bottle", "vessel"
         ]
         
-        # Find the first product keyword in the message, but preserve original query for electronics
-        electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
-        if not any(term in msg for term in electronics_terms):
-            # Only extract product keywords for non-electronics searches
-            for keyword in product_keywords:
-                if keyword in msg:
-                    params["query"] = keyword
-                    break
+        # Check for "show all" commands first - don't extract specific product keywords
+        show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products"]
+        if any(cmd in msg for cmd in show_all_commands):
+            # Keep the original query for "show all" commands
+            pass
+        else:
+            # Find the first product keyword in the message, but preserve original query for electronics
+            electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
+            if not any(term in msg for term in electronics_terms):
+                # Only extract product keywords for non-electronics searches
+                for keyword in product_keywords:
+                    if keyword in msg:
+                        params["query"] = keyword
+                        break
         
         # Check for eco-friendly keywords
         eco_keywords = ["eco", "green", "sustainable", "environmental", "organic", "recycled"]
@@ -545,15 +542,12 @@ What would you like to explore? I'll make sure to highlight the environmental be
     async def _search_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Search products using boutique MCP."""
         try:
-            print(f"ProductDiscoveryAgent: _search_products called with params: {search_params}")
             logger.info("ProductDiscoveryAgent: Starting product search", search_params=search_params)
             
             if not self.boutique_mcp_server:
-                print(f"ProductDiscoveryAgent: Boutique MCP server not available, using fallback data")
                 logger.warning("Boutique MCP server not available, using fallback data")
                 return await self._get_fallback_products(search_params)
             
-            print(f"ProductDiscoveryAgent: Calling boutique MCP server")
             logger.info("ProductDiscoveryAgent: Calling boutique MCP server")
             # Call the boutique MCP server to search products
             products = await self.boutique_mcp_server.search_products(
@@ -581,14 +575,12 @@ What would you like to explore? I'll make sure to highlight the environmental be
             should_use_intelligent_fallback = await self._should_use_intelligent_fallback(search_params, products)
 
             if not products or should_use_intelligent_fallback:
-                print(f"ProductDiscoveryAgent: Using intelligent fallback - No products: {not products}, Irrelevant results: {should_use_intelligent_fallback}")
                 logger.warning("Using intelligent fallback with Gemini", no_products=not products, irrelevant_results=should_use_intelligent_fallback)
                 return await self._get_intelligent_fallback_products(search_params)
 
             return products
             
         except Exception as e:
-            print(f"ProductDiscoveryAgent: Exception in _search_products: {str(e)}")
             logger.error("Failed to search products via MCP, using intelligent fallback", error=str(e))
             return await self._get_intelligent_fallback_products(search_params)
 
@@ -603,7 +595,11 @@ What would you like to explore? I'll make sure to highlight the environmental be
         stop_words = {"find", "search", "show", "get", "me", "for", "a", "the", "is", "are", "of"}
         query_words = [word for word in query.split() if word and word not in stop_words]
 
-        if not query_words:
+        # If the query consists only of "show all"-type words, don't use fallback.
+        # This correctly handles "show all products", "products", "all products", etc.
+        relevance_check_words = [w for w in query_words if w not in ["all", "products"]]
+        if not relevance_check_words:
+            logger.info("Query is a 'show all' command, returning False (no intelligent fallback)")
             return False
 
         # Check for specific product categories that don't exist in Online Boutique
@@ -614,9 +610,9 @@ What would you like to explore? I'll make sure to highlight the environmental be
         }
 
         # If user is searching for non-existent categories, use intelligent fallback
+        # Use the original query_words for this check to catch "electronics" etc.
         for query_word in query_words:
             if query_word in non_existent_categories:
-                print(f"🚨🚨 TRIGGERING INTELLIGENT FALLBACK FOR NON-EXISTENT CATEGORY: '{query_word}' 🚨🚨")
                 logger.info(f"TRIGGERING INTELLIGENT FALLBACK FOR NON-EXISTENT CATEGORY: {query_word}")
                 return True
 
@@ -627,7 +623,8 @@ What would you like to explore? I'll make sure to highlight the environmental be
             product_name_lower = product.get("name", "").lower()
             product_desc_lower = product.get("description", "").lower()
 
-            for query_word in query_words:
+            # Use the filtered relevance_check_words for this.
+            for query_word in relevance_check_words:
                 if query_word in product_name_lower or query_word in product_desc_lower:
                     relevant_products.append(product)
                     break
@@ -637,19 +634,17 @@ What would you like to explore? I'll make sure to highlight the environmental be
         is_irrelevant = relevance_ratio < 0.5
 
         if is_irrelevant:
-            print(f"ProductDiscoveryAgent: Low relevance ratio ({relevance_ratio:.2f}) - triggering intelligent fallback")
+            logger.warning(f"Results deemed irrelevant (ratio: {relevance_ratio:.2f}). Triggering fallback.")
 
         return is_irrelevant
 
     async def _get_intelligent_fallback_products(self, search_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get intelligent product suggestions using Gemini when no exact matches found."""
         try:
-            print(f"🤖🤖 INTELLIGENT FALLBACK TRIGGERED! search_params: {search_params} 🤖🤖")
             logger.info(f"INTELLIGENT FALLBACK TRIGGERED! search_params: {search_params}")
 
             query = search_params.get("query", "")
             if not query:
-                print("🤖 No query provided, using regular fallback")
                 return await self._get_fallback_products(search_params)
 
             # Get available products from Online Boutique (without query filtering for intelligent fallback)
@@ -706,39 +701,32 @@ What would you like to explore? I'll make sure to highlight the environmental be
     async def _rule_based_intelligent_matching(self, query: str, available_products: List[Dict]) -> List[Dict]:
         """Rule-based intelligent product matching when Gemini is not available."""
         query_lower = query.lower()
-        print(f"🤖 RULE-BASED MATCHING: Query='{query}', Available products: {[p['name'] for p in available_products]}")
 
         # First, check for exact product name matches
         exact_matches = [p for p in available_products if p["name"].lower() == query_lower]
         if exact_matches:
-            print(f"🤖 EXACT MATCH FOUND: {exact_matches[0]['name']}")
             return exact_matches
 
         # Then, check for partial name matches
         partial_matches = [p for p in available_products if query_lower in p["name"].lower()]
         if partial_matches:
-            print(f"🤖 PARTIAL MATCH FOUND: {[p['name'] for p in partial_matches]}")
             return partial_matches
 
         # Electronics requests -> suggest Watch (closest electronic item)
         if any(term in query_lower for term in ["laptop", "computer", "electronics", "tech", "phone", "device"]):
-            print(f"🤖 ELECTRONICS DETECTED: {query_lower}")
             matching_products = [p for p in available_products if p["name"].lower() == "watch"]
             if matching_products:
                 product = matching_products[0].copy()
                 term_found = next((term for term in ["laptop", "computer", "electronics", "tech", "phone", "device"] if term in query_lower), "electronics")
                 product["ai_explanation"] = f"While we don't have {term_found}s in our catalog, I recommend this eco-friendly Watch as a sustainable tech accessory. It has a low CO2 footprint of {product['co2_emissions']}kg and an excellent eco-score of {product['eco_score']}/10."
-                print(f"🤖 RETURNING ELECTRONICS RECOMMENDATION: {product['name']}")
                 return [product]
 
         # Camera/Photography requests -> suggest Sunglasses (visual accessory)
         if any(term in query_lower for term in ["camera", "photography", "photo", "video", "lens"]):
-            print(f"🤖 CAMERA DETECTED: {query_lower}")
             matching_products = [p for p in available_products if p["name"].lower() == "sunglasses"]
             if matching_products:
                 product = matching_products[0].copy()
                 product["ai_explanation"] = f"While we don't have cameras, I recommend these eco-friendly Sunglasses as they're perfect for outdoor photography and adventures! They have excellent UV protection, a low CO2 footprint of {product['co2_emissions']}kg, and an outstanding eco-score of {product['eco_score']}/10."
-                print(f"🤖 RETURNING CAMERA RECOMMENDATION: {product['name']}")
                 return [product]
 
         # Clothing requests -> suggest eco-friendly clothing
@@ -895,14 +883,12 @@ What would you like to explore? I'll make sure to highlight the environmental be
         ]
         
         # Filter based on search parameters
-        print(f"🔍 ProductDiscoveryAgent: Filtering {len(mock_products)} mock products with params: {search_params}")
         filtered_products = []
         for product in mock_products:
-            print(f"🔍 ProductDiscoveryAgent: Checking product: {product['name']} (category: {product['category']}, eco_score: {product['eco_score']})")
             
             # Check text query match first
             query = search_params.get("query", "").lower().strip()
-            if query and query not in ["show all", "all products", "show me all", "list all", "show products", "products"]:
+            if query and query not in ["show all", "all products", "show me all", "list all", "show products", "products", "show all products"]:
                 # For specific product searches, filter out stop words and check if all remaining words match
                 stop_words = {"show", "find", "search", "me", "for", "a", "the", "is", "are", "of"}
                 all_query_words = [word for word in query.split() if word]
@@ -920,22 +906,17 @@ What would you like to explore? I'll make sure to highlight the environmental be
                             break
                     
                     if not all_words_found:
-                        print(f"🔍 ProductDiscoveryAgent: Filtered out by query text: {product['name']} (query: {query})")
                         continue
             
             if search_params.get("category") and product["category"] != search_params["category"]:
-                print(f"🔍 ProductDiscoveryAgent: Filtered out by category: {product['name']}")
                 continue
             
             if search_params.get("max_price") and product["price"] > search_params["max_price"]:
-                print(f"🔍 ProductDiscoveryAgent: Filtered out by price: {product['name']}")
                 continue
             
             if search_params.get("eco_friendly") and product["eco_score"] < 4.0:
-                print(f"🔍 ProductDiscoveryAgent: Filtered out by eco_score: {product['name']} (score: {product['eco_score']})")
                 continue
             
-            print(f"🔍 ProductDiscoveryAgent: Product passed filters: {product['name']}")
             filtered_products.append(product)
         
         # *** START OF THE FIX ***

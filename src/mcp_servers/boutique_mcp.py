@@ -204,19 +204,19 @@ class BoutiqueMCPServer:
             List of products matching the search criteria
         """
         try:
-            print(f"BoutiqueMCP: Starting search_products with query: '{query}'")
             logger.info(f"Fetching products from {self.endpoints['product_catalog']} via gRPC")
             
             # gRPC call to ProductCatalogService
-            print(f"BoutiqueMCP: Creating gRPC channel to {self.endpoints['product_catalog']}")
             async with aio.insecure_channel(self.endpoints['product_catalog']) as ch:
                 stub = pb2_grpc.ProductCatalogServiceStub(ch)
                 resp = await stub.ListProducts(pb2.Empty())
                 
                 logger.info(f"Received {len(resp.products)} products from gRPC")
+                logger.info(f"Product names: {[p.name for p in resp.products]}")
                 
                 # Convert gRPC response to our format
                 products = []
+                logger.info(f"Converting {len(resp.products)} products from gRPC response")
                 for p in resp.products:
                     # Calculate price in units
                     price_units = p.price_usd.units + (p.price_usd.nanos / 1e9)
@@ -282,10 +282,10 @@ class BoutiqueMCPServer:
                         break
                 
                 logger.info("Product search completed", query=query, results_count=len(products))
+                logger.info(f"Final product names: {[p.get('name') for p in products]}")
                 return products
             
         except Exception as e:
-            print(f"BoutiqueMCP: Exception in search_products: {str(e)}")
             logger.error("Product search failed", query=query, error=str(e))
             return []
     

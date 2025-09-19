@@ -536,8 +536,10 @@ class CO2ShoppingAssistant {
     async sendShippingSelectionToBackend(shippingOption) {
         try {
             const response = await this.callAPI(`set shipping to ${shippingOption}`);
+            // Extract the text response from the API response object
+            const messageText = response.response?.response || response.response || response;
             // Update CO2 based on backend response
-            this.extractAndUpdateCO2Savings(response);
+            this.extractAndUpdateCO2Savings(messageText);
         } catch (error) {
             console.error("Failed to send shipping selection to backend:", error);
         }

@@ -6,7 +6,6 @@ in the CO2-Aware Shopping Assistant system.
 """
 
 import asyncio
-import json
 import uuid
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
@@ -258,13 +257,9 @@ class A2AProtocol:
     async def _send_direct_message(self, message: A2AMessage, agent_instance: Any, timeout: float) -> Dict[str, Any]:
         """Send message directly to agent instance."""
         try:
-            print(f"A2A: Sending direct message to {message.recipient}")
-            print(f"A2A: Agent instance type: {type(agent_instance)}")
-            print(f"A2A: Message payload: {message.payload}")
             
             # Try to call the agent's process_message method
             if hasattr(agent_instance, 'process_message'):
-                print(f"A2A: Calling process_message on {message.recipient}")
                 response = await asyncio.wait_for(
                     agent_instance.process_message(
                         message.payload.get("message", ""),
@@ -272,7 +267,6 @@ class A2AProtocol:
                     ),
                     timeout=timeout
                 )
-                print(f"A2A: Received response from {message.recipient}: {type(response)}")
                 return response
             
             # Try to call the agent's execute_task method

@@ -135,7 +135,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
             
             # Analyze user intent and determine routing
             intent = await self._analyze_intent(message, context)
-            print(f"🏠🏠 HOST AGENT: Intent analyzed for '{message}': {intent} 🏠🏠")
             logger.info("Intent analyzed", intent=intent, session_id=session_id)
             
             # Route to appropriate agent(s)
@@ -186,7 +185,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         message_lower = message.lower().strip()
         
         # DEBUG: Print the message being analyzed
-        print(f"🔍 DEBUG: Analyzing message: '{message}'")
         
         # Intent classification based on keywords and patterns
         intent = {
@@ -340,7 +338,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         comparison_score = sum(1 for keyword in comparison_keywords if keyword in message_lower)
         
         # DEBUG: Print keyword matching scores
-        print(f"🔍 DEBUG: Keyword scores - Product: {product_score}, CO2: {co2_score}, Cart: {cart_score}, Checkout: {checkout_score}, Comparison: {comparison_score}")
         
         # Prefer discovery for recommendation phrasing
         if ("recommend" in message_lower or "suggest" in message_lower):
@@ -371,7 +368,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         max_score = scores[primary_agent]
         
         # DEBUG: Print routing decision
-        print(f"🔍 DEBUG: Routing decision - Primary agent: {primary_agent}, Max score: {max_score}")
         
         if max_score > 0:
             intent["primary_agent"] = primary_agent
