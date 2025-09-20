@@ -635,10 +635,12 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
         Generate a comprehensive and personalized analysis of the cart that includes:
         1. A friendly and engaging opening.
         2. A summary of the cart's contents (number of items, total value).
-        3. A detailed analysis of the cart's total CO2 emissions, with a relatable analogy (e.g., equivalent to driving X miles).
+        3. A detailed analysis of the cart's total CO2 emissions in kilograms (kg), with a relatable analogy (e.g., equivalent to driving X miles). Always use "kg" as the unit for CO2 emissions.
         4. A sustainability score for the cart.
         5. Actionable recommendations for reducing the cart's carbon footprint (e.g., suggesting alternatives for high-impact items).
         6. A concluding, encouraging message.
+        
+        IMPORTANT: Always express CO2 emissions in kilograms (kg), never in grams or gCO2e.
         """
         return await self._llm_generate_text(self.instruction, prompt) or "Here are the items in your cart."
 

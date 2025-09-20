@@ -6,6 +6,7 @@ and catalog operations with environmental consciousness.
 """
 
 import asyncio
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import structlog
@@ -193,7 +194,7 @@ Always explain why certain products are more environmentally friendly and help u
             
             # Format response
             if products_with_co2:
-                response = self._format_product_search_response(products_with_co2, search_params)
+                response = await self._format_product_search_response(products_with_co2, search_params)
             else:
                 response = "I couldn't find any products matching your criteria. Could you try different search terms or broaden your search?"
             
@@ -247,7 +248,7 @@ Always explain why certain products are more environmentally friendly and help u
             recommendations_with_co2 = await self._enrich_with_co2_data(recommendations)
             
             # Format response
-            response = self._format_recommendation_response(recommendations_with_co2, rec_params)
+            response = await self._format_recommendation_response(recommendations_with_co2, rec_params)
             
             return response
             
@@ -1031,15 +1032,55 @@ What would you like to explore? I'll make sure to highlight the environmental be
             "eco_rating": "Low"
         }
     
-    def _format_product_search_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
-        """Format product search results into a user-friendly catalog-style response with images."""
+    async def _format_product_search_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
+        """Generate an AI-powered product search response."""
         if not products:
             return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
         # Check if this is an intelligent fallback with AI explanations
         has_ai_explanations = any(product.get('ai_explanation') for product in products)
         
+        # Calculate total and average CO2 for multiple products
+        total_co2 = sum(p.get('co2_emissions', 0.0) for p in products)
+        average_co2 = total_co2 / len(products) if products else 0
+        
+        prompt = f"""
+        The user searched for products and found {len(products)} results. Here are the product details:
+        - Search Parameters: {json.dumps(search_params)}
+        - Products: {json.dumps(products, default=str)}
+        - Total CO2 Impact: {total_co2:.1f} kg
+        - Average CO2 Impact: {average_co2:.1f} kg
+        - Has AI Explanations: {has_ai_explanations}
 
+        Generate a personalized, engaging product search response that:
+        1. Creates an enthusiastic opening that acknowledges their search
+        2. Presents the products in a catalog-style format with clear product cards
+        3. Highlights the environmental benefits and CO2 impact of each product
+        4. Provides personalized recommendations based on the search criteria
+        5. Includes sustainability tips and eco-friendly shopping advice
+        6. Encourages further interaction (asking questions, adding to cart, etc.)
+        
+        Format each product as:
+        📦 **[Product Name]**
+        💰 Price: $[price]
+        🌍 CO2 Impact: [co2]kg ([rating] Impact)
+        ⭐ Eco Score: [score]/10
+        📝 Description: [description]
+        🤖 AI Recommendation: [personalized recommendation]
+        
+        Make the response conversational, helpful, and focused on sustainability.
+        """
+        
+        return await self._llm_generate_text(self.instruction, prompt) or self._fallback_product_response(products, search_params)
+    
+    def _fallback_product_response(self, products: List[Dict[str, Any]], search_params: Dict[str, Any]) -> str:
+        """Fallback response when AI generation fails."""
+        if not products:
+            return "I couldn't find any products matching your criteria. Try adjusting your search terms."
+
+        # Check if this is an intelligent fallback with AI explanations
+        has_ai_explanations = any(product.get('ai_explanation') for product in products)
+        
         if has_ai_explanations:
             response = f"🤖 **AI-Powered Product Suggestions** ({len(products)} recommendations)\n\n"
             response += "💡 *I couldn't find exact matches, but here are sustainable alternatives from our eco-friendly catalog:*\n\n"
@@ -1080,10 +1121,48 @@ What would you like to explore? I'll make sure to highlight the environmental be
         
         return response
     
-    def _format_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
-        """Format recommendation results."""
+    async def _format_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
+        """Generate an AI-powered recommendation response."""
         if not recommendations:
             # Graceful default suggestions when no criteria
+            return (
+                "I couldn't generate recommendations from your criteria. "
+                "Try specifying a category or price limit (e.g., 'eco-friendly under $20')."
+            )
+        
+        # Calculate total and average CO2 for recommendations
+        total_co2 = sum(p.get('co2_emissions', 0.0) for p in recommendations)
+        average_co2 = total_co2 / len(recommendations) if recommendations else 0
+        
+        prompt = f"""
+        The user requested recommendations and I found {len(recommendations)} sustainable products. Here are the details:
+        - Recommendation Parameters: {json.dumps(rec_params)}
+        - Recommendations: {json.dumps(recommendations, default=str)}
+        - Total CO2 Impact: {total_co2:.1f} kg
+        - Average CO2 Impact: {average_co2:.1f} kg
+
+        Generate a personalized, enthusiastic recommendation response that:
+        1. Creates an engaging opening that acknowledges their request for recommendations
+        2. Presents each recommendation with personalized reasoning
+        3. Highlights the environmental benefits and sustainability features
+        4. Explains why each product is recommended based on their criteria
+        5. Provides sustainability tips and eco-friendly shopping advice
+        6. Encourages further interaction (asking questions, adding to cart, etc.)
+        
+        Format each recommendation as:
+        📦 **[Product Name]** (${price})
+        ⭐ Eco Score: [score]/10
+        🌍 CO2 Impact: [co2]kg
+        💡 Why I recommend this: [personalized reasoning]
+        
+        Make the response conversational, helpful, and focused on sustainability.
+        """
+        
+        return await self._llm_generate_text(self.instruction, prompt) or self._fallback_recommendation_response(recommendations, rec_params)
+    
+    def _fallback_recommendation_response(self, recommendations: List[Dict[str, Any]], rec_params: Dict[str, Any]) -> str:
+        """Fallback response when AI generation fails."""
+        if not recommendations:
             return (
                 "I couldn't generate recommendations from your criteria. "
                 "Try specifying a category or price limit (e.g., 'eco-friendly under $20')."

@@ -262,6 +262,15 @@ Always help users complete their purchases while minimizing environmental impact
                 except Exception:
                     pass
                 
+                # Add shipping cost and CO2 to order totals for checkout response
+                shipping_option = self.shipping_options.get(auto_pref, {})
+                shipping_cost = shipping_option.get("cost", 0.0)
+                shipping_co2 = 500 * shipping_option.get("co2_per_mile", 0.0)
+                
+                order_totals["shipping_cost"] = shipping_cost
+                order_totals["total"] = order_totals["total"] + shipping_cost
+                order_totals["total_co2"] = order_totals["total_co2"] + shipping_co2
+                
                 # Update response to show total CO2 including shipping
                 response = await self._format_checkout_response_with_shipping(order_totals, shipping_options, auto_pref)
                 return response
@@ -576,10 +585,14 @@ Always help users complete their purchases while minimizing environmental impact
         cart_contents = await self._get_cart_contents(session_id)
         order_totals = await self._calculate_order_totals(cart_contents)
         
-        # Add shipping cost to total
-        shipping_cost = self.shipping_options.get(shipping_method, {}).get("cost", 0.0)
+        # Add shipping cost and CO2 to total
+        shipping_option = self.shipping_options.get(shipping_method, {})
+        shipping_cost = shipping_option.get("cost", 0.0)
+        shipping_co2 = 500 * shipping_option.get("co2_per_mile", 0.0)  # Calculate shipping CO2
+        
         order_totals["shipping_cost"] = shipping_cost
         order_totals["total"] = order_totals["total"] + shipping_cost
+        order_totals["total_co2"] = order_totals["total_co2"] + shipping_co2  # Add shipping CO2 to total
         
         # Create order
         order = {
@@ -677,15 +690,19 @@ Always help users complete their purchases while minimizing environmental impact
 
     async def _format_checkout_response_with_shipping(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]], selected_shipping: str) -> str:
         """Generate an AI-powered checkout response with a selected shipping method."""
+        total_co2 = order_totals.get('total_co2', 0.0)
         prompt = f"""
         The user is ready to checkout and has selected a shipping method.
         - Order Totals: {json.dumps(order_totals)}
         - Selected Shipping: {selected_shipping}
+        - Total CO2: {total_co2:.1f} kg
 
         Generate a personalized checkout summary that:
         1. Confirms the selected shipping method.
-        2. Provides a complete order summary, including the final total cost and CO2 impact.
+        2. Provides a complete order summary with accurate costs: subtotal, tax, shipping cost (from order_totals), and final total. Include the total CO2 impact of {total_co2:.1f} kg. All CO2 values should be in kilograms (kg).
         3. Offers a final encouragement to proceed with the sustainable purchase.
+        
+        IMPORTANT: Use the exact shipping cost from the order_totals data. Do not show $0.00 for shipping unless that's actually in the data.
         """
         return await self._llm_generate_text(self.instruction, prompt) or "Ready to complete your order?"
 
@@ -702,13 +719,15 @@ Always help users complete their purchases while minimizing environmental impact
 
     async def _format_payment_success_response(self, order: Dict[str, Any]) -> str:
         """Generate an AI-powered response for a successful payment."""
+        total_co2 = order.get("totals", {}).get("total_co2", 0.0)
         prompt = f"""
         The user's payment was successful and the order is confirmed. Here is the order information:
         {json.dumps(order, default=str)}
+        - Total CO2: {total_co2:.1f} kg
 
         Generate a personalized and enthusiastic order confirmation that:
         1. Celebrates the successful order.
-        2. Provides a summary of the order (ID, total paid, total CO2).
+        2. Provides a summary of the order (ID, total paid, and a total CO2 of {total_co2:.1f} kg). All CO2 values should be in kilograms (kg).
         3. Includes shipping and tracking information.
         4. Thanks the user for making a sustainable choice, especially if they chose eco-friendly shipping.
         """

@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY k8s/ ./k8s/
 COPY scripts/ ./scripts/
+COPY protos/ ./protos/
 
 # Create non-root user with a stable numeric UID/GID
 RUN useradd --uid 1000 --create-home --shell /bin/bash app && \

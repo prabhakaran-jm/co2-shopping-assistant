@@ -408,8 +408,8 @@ class CO2ShoppingAssistant {
         // Normalize: remove markdown bold so regex matches labels like **Total CO2**
         const text = response.replace(/\*\*/g, '');
 
-        // 1. Reset state after a successful payment or cart clearing
-        if (/Payment\s+Successful|Order\s+Confirmed|cart\s+has\s+been\s+cleared|empty\s+cart|cart\s+is\s+now\s+empty/i.test(text)) {
+        // 1. Reset state only after cart clearing (not after successful payments)
+        if (/cart\s+has\s+been\s+cleared|empty\s+cart|cart\s+is\s+now\s+empty/i.test(text)) {
             this.totalCO2Impact = 0;
             this.totalCO2Saved = 0;
             this.productCO2 = 0;
@@ -437,7 +437,61 @@ class CO2ShoppingAssistant {
             return;
         }
 
-        // 3. Handle other scenarios when not a cart operation (e.g., viewing a single product)
+        // 3. Handle multiple products scenario (e.g., "show all products")
+        const productCountMatch = text.match(/Found\s+(\d+)\s+eco-friendly\s+products/i);
+        if (productCountMatch && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
+            const productCount = parseInt(productCountMatch[1]);
+            if (productCount > 1) {
+                // Calculate total CO2 from individual products in the response
+                const co2Matches = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/gi);
+                if (co2Matches && co2Matches.length > 0) {
+                    let totalCo2 = 0;
+                    co2Matches.forEach(match => {
+                        const co2Value = parseFloat(match.match(/(\d+(?:\.\d+)?)/)[1]);
+                        if (!Number.isNaN(co2Value)) {
+                            totalCo2 += co2Value;
+                        }
+                    });
+                    const averageCo2 = totalCo2 / co2Matches.length;
+                    
+                    this.productCO2 = totalCo2;
+                    this.totalCO2Impact = totalCo2;
+                    this.co2Label = 'Product Catalog';
+                    this.updateCO2Display(productCount, averageCo2);
+                    return;
+                }
+            }
+        }
+
+        // 4. Handle cart CO2 data from "what's in my cart" responses
+        const cartCo2Match = text.match(/Total\s+CO[₂2]\s*Emissions?.*?(\d+(?:\.\d+)?)\s*kg/i);
+        if (cartCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
+            const co2Value = parseFloat(cartCo2Match[1]);
+            if (!Number.isNaN(co2Value)) {
+                this.productCO2 = Math.max(0, co2Value);
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                this.calculateCO2Savings();
+                this.co2Label = this.shippingCO2 > 0 ? 'Total CO₂ Impact' : 'Cart CO₂ Impact';
+                this.updateCO2Display();
+                return;
+            }
+        }
+
+        // 4b. Handle cart CO2 from cart summary responses
+        const cartSummaryMatch = text.match(/Total\s+CO[₂2]\s*impact.*?(\d+(?:\.\d+)?)\s*kg/i);
+        if (cartSummaryMatch && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
+            const co2Value = parseFloat(cartSummaryMatch[1]);
+            if (!Number.isNaN(co2Value)) {
+                this.productCO2 = Math.max(0, co2Value);
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                this.calculateCO2Savings();
+                this.co2Label = this.shippingCO2 > 0 ? 'Total CO₂ Impact' : 'Cart CO₂ Impact';
+                this.updateCO2Display();
+                return;
+            }
+        }
+
+        // 5. Handle other scenarios when not a cart operation (e.g., viewing a single product)
         const impactCo2Match = text.match(/(?:🌍\s*)?CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         if (impactCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const co2Value = parseFloat(impactCo2Match[1]);
@@ -466,23 +520,41 @@ class CO2ShoppingAssistant {
         }
     }
     
-    updateCO2Display() {
+    updateCO2Display(productCount = null, averageCo2 = null) {
         if (this.co2SavingsElement) {
             const label = this.co2Label || 'CO₂ Impact';
-            this.co2SavingsElement.innerHTML = `
-                <div class="co2-widget">
-                    <div class="co2-icon">🌱</div>
-                    <div class="co2-content">
-                        <div class="co2-label">${label}</div>
-                        <div class="co2-value">${this.totalCO2Impact.toFixed(1)} kg</div>
-                        ${this.totalCO2Impact > 0 ? `<div class="co2-breakdown">
-                            ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
-                            ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
-                        </div>` : ''}
-                        ${this.totalCO2Saved > 0 ? `<div class="co2-savings">Saved: ${this.totalCO2Saved.toFixed(1)}kg</div>` : ''}
+            let content;
+            
+            if (productCount && productCount > 1) {
+                content = `
+                    <div class="co2-widget">
+                        <div class="co2-icon">🌱</div>
+                        <div class="co2-content">
+                            <div class="co2-label">${label}</div>
+                            <div class="co2-value">${productCount} products found</div>
+                            <div class="co2-breakdown">Total CO₂: ${this.totalCO2Impact.toFixed(1)}kg</div>
+                            <div class="co2-breakdown">Average CO₂: ${averageCo2.toFixed(1)}kg</div>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            } else {
+                content = `
+                    <div class="co2-widget">
+                        <div class="co2-icon">🌱</div>
+                        <div class="co2-content">
+                            <div class="co2-label">${label}</div>
+                            <div class="co2-value">${this.totalCO2Impact.toFixed(1)} kg</div>
+                            ${this.totalCO2Impact > 0 ? `<div class="co2-breakdown">
+                                ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
+                                ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
+                            </div>` : ''}
+                            ${this.totalCO2Saved > 0 ? `<div class="co2-savings">Saved: ${this.totalCO2Saved.toFixed(1)}kg</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            this.co2SavingsElement.innerHTML = content;
             
             this.co2SavingsElement.style.transform = 'scale(1.1)';
             setTimeout(() => {
@@ -799,10 +871,16 @@ class CO2ShoppingAssistant {
             if (cartTotalMatch && cartTotalMatch[1]) {
                 this.productCO2 = parseFloat(cartTotalMatch[1]);
             } else {
-                // Look for individual product CO2 and add it
-                const productCo2Match = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-                if (productCo2Match && productCo2Match[1]) {
-                    this.productCO2 += parseFloat(productCo2Match[1]);
+                // Look for cart summary CO2 impact
+                const cartImpactMatch = text.match(/Total\s+CO[₂2]\s*impact.*?(\d+(?:\.\d+)?)\s*kg/i);
+                if (cartImpactMatch && cartImpactMatch[1]) {
+                    this.productCO2 = parseFloat(cartImpactMatch[1]);
+                } else {
+                    // Look for individual product CO2 and add it
+                    const productCo2Match = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+                    if (productCo2Match && productCo2Match[1]) {
+                        this.productCO2 += parseFloat(productCo2Match[1]);
+                    }
                 }
             }
         } else if (operation === 'remove' || operation === 'clear') {

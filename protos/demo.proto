@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package hipstershop;
+
+// The product catalog service definition.
+service ProductCatalogService {
+  // Lists all products.
+  rpc ListProducts(Empty) returns (ListProductsResponse);
+  // Gets a specific product.
+  rpc GetProduct(GetProductRequest) returns (Product);
+}
+
+// Empty request.
+message Empty {}
+
+// Request message for GetProduct.
+message GetProductRequest {
+  string id = 1;
+}
+
+// Response message for ListProducts.
+message ListProductsResponse {
+  repeated Product products = 1;
+}
+
+// Product represents a product in the catalog.
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string picture = 4;
+  Money price_usd = 5;
+  repeated string categories = 6;
+}
+
+// Money represents an amount of money with its currency type.
+message Money {
+  string currency_code = 1;
+  int64 units = 2;
+  int32 nanos = 3;
+}

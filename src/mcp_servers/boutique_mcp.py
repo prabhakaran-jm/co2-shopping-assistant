@@ -18,7 +18,7 @@ import time
 import functools
 
 # Add protos directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'protos'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'protos'))
 
 # Import generated gRPC stubs
 import demo_pb2 as pb2
@@ -187,18 +187,22 @@ class BoutiqueMCPServer:
                 return self._product_cache
         except Exception as e:
             logger.error("Failed to search products via gRPC", error=str(e))
-            raise
+            logger.info("Falling back to cached/mock products")
+            return await self._fallback_search_products(query, category, max_price, min_price, limit)
 
     async def _fallback_search_products(self, *args, **kwargs) -> List[Dict[str, Any]]:
         logger.warning("Using cached product data as fallback for search_products.")
         if self._product_cache:
             return self._product_cache
         
-        # Return mock products if cache is empty
+        # Return mock products if cache is empty - matching UI products
         return [
-            {"id": "mock-1", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
-            {"id": "mock-2", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
-            {"id": "mock-3", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"]},
+            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"]},
+            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"]},
+            {"id": "mock-4", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
+            {"id": "mock-5", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
+            {"id": "mock-6", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
         ]
 
     @retry_with_breaker("product_catalog", "_fallback_get_product_details")
@@ -223,7 +227,8 @@ class BoutiqueMCPServer:
                 }
         except Exception as e:
             logger.error("Failed to get product details via gRPC", product_id=product_id, error=str(e))
-            raise
+            logger.info("Falling back to cached/mock product details")
+            return await self._fallback_get_product_details(product_id)
 
     async def _fallback_get_product_details(self, product_id: str, *args, **kwargs) -> Optional[Dict[str, Any]]:
         logger.warning(f"Using cached product data as fallback for get_product_details for product_id: {product_id}")
@@ -232,9 +237,12 @@ class BoutiqueMCPServer:
                 return product
         
         mock_products = [
-            {"id": "mock-1", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
-            {"id": "mock-2", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
-            {"id": "mock-3", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"]},
+            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"]},
+            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"]},
+            {"id": "mock-4", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
+            {"id": "mock-5", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
+            {"id": "mock-6", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
         ]
         for product in mock_products:
             if product.get("id") == product_id:
