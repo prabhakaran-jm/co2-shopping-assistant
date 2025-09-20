@@ -145,6 +145,74 @@ Always help users complete their purchases while minimizing environmental impact
                 "agent": self.name
             }
     
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a specific task assigned to this agent."""
+        task_type = task.get("type", "unknown")
+        
+        if task_type == "process_checkout":
+            return await self._execute_checkout_task(task)
+        elif task_type == "process_payment":
+            return await self._execute_payment_task(task)
+        elif task_type == "get_order_status":
+            return await self._execute_order_status_task(task)
+        elif task_type == "get_tracking_info":
+            return await self._execute_tracking_task(task)
+        else:
+            return {"error": f"Unknown task type: {task_type}"}
+
+    async def _execute_checkout_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute checkout task."""
+        session_id = task.get("session_id", "default")
+        cart_contents = await self._get_cart_contents(session_id)
+        order_totals = await self._calculate_order_totals(cart_contents)
+        shipping_options = await self._get_shipping_options(cart_contents)
+        
+        return {
+            "order_totals": order_totals,
+            "shipping_options": shipping_options,
+            "cart_contents": cart_contents
+        }
+
+    async def _execute_payment_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute payment task."""
+        payment_info = task.get("payment_info", {})
+        session_id = task.get("session_id", "default")
+        
+        payment_result = await self._process_payment(payment_info, session_id)
+        
+        if payment_result["success"]:
+            # Default to eco-friendly shipping for task-based payments
+            shipping_method = "eco"
+            order = await self._create_order(session_id, payment_result, shipping_method)
+            return {
+                "success": True,
+                "order": order,
+                "payment_result": payment_result
+            }
+        else:
+            return {
+                "success": False,
+                "payment_result": payment_result
+            }
+
+    async def _execute_order_status_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute order status task."""
+        order_id = task.get("order_id")
+        order_status = await self._get_order_status(order_id)
+        
+        return {
+            "order_status": order_status
+        }
+
+    async def _execute_tracking_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute tracking task."""
+        order_id = task.get("order_id")
+        tracking_info = await self._get_tracking_info(order_id)
+        
+        return {
+            "tracking_info": tracking_info
+        }
+
     async def _parse_checkout_request_type(self, message: str) -> str:
         """Parse the type of checkout request."""
         message_lower = message.lower()
@@ -195,7 +263,7 @@ Always help users complete their purchases while minimizing environmental impact
                     pass
                 
                 # Update response to show total CO2 including shipping
-                response = self._format_checkout_response_with_shipping(order_totals, shipping_options, auto_pref)
+                response = await self._format_checkout_response_with_shipping(order_totals, shipping_options, auto_pref)
                 return response
 
             # Persist a checkout snapshot for resilience across session hops
@@ -209,7 +277,7 @@ Always help users complete their purchases while minimizing environmental impact
                 pass
 
             # Format checkout response
-            response = self._format_checkout_response(order_totals, shipping_options)
+            response = await self._format_checkout_response(order_totals, shipping_options)
             
             return response
             
@@ -240,7 +308,7 @@ Always help users complete their purchases while minimizing environmental impact
                 except Exception:
                     pass
             # Format shipping response
-            response = self._format_shipping_response(shipping_options)
+            response = await self._format_shipping_response(shipping_options)
             
             return response
             
@@ -316,10 +384,10 @@ Always help users complete their purchases while minimizing environmental impact
                     pass
                 
                 # Format success response
-                response = self._format_payment_success_response(order)
+                response = await self._format_payment_success_response(order)
             else:
                 # Format error response
-                response = self._format_payment_error_response(payment_result)
+                response = await self._format_payment_error_response(payment_result)
             
             return response
             
@@ -343,7 +411,7 @@ Always help users complete their purchases while minimizing environmental impact
                 return f"I couldn't find order {order_id}. Please check your order number."
             
             # Format status response
-            response = self._format_order_status_response(order_status)
+            response = await self._format_order_status_response(order_status)
             
             return response
             
@@ -367,7 +435,7 @@ Always help users complete their purchases while minimizing environmental impact
                 return f"I couldn't find tracking information for order {order_id}. Please check your order number."
             
             # Format tracking response
-            response = self._format_tracking_response(tracking_info)
+            response = await self._format_tracking_response(tracking_info)
             
             return response
             
@@ -375,29 +443,7 @@ Always help users complete their purchases while minimizing environmental impact
             logger.error("Order tracking failed", error=str(e))
             return "I encountered an error while tracking your order. Please try again."
     
-    async def _handle_general_checkout_inquiry(self, message: str, session_id: str) -> str:
-        """Handle general checkout-related inquiries."""
-        return """💳 I'm your Checkout Agent, here to help you complete your purchase with environmental consciousness!
 
-I can help you with:
-- **Checkout Process**: "Proceed to checkout" or "Complete my order"
-- **Shipping Options**: "Show me shipping options" or "What's the most eco-friendly shipping?"
-- **Payment Processing**: "Process payment" or "Pay with my card"
-- **Order Status**: "What's the status of my order?" or "Check order status"
-- **Order Tracking**: "Track my order" or "Where is my package?"
-
-**Environmental Features**:
-- Eco-friendly shipping options with CO2 calculations
-- Sustainable packaging recommendations
-- Environmental impact breakdown for your order
-- Carbon offset suggestions
-
-**Shipping Options**:
-- 🌱 **Eco-Friendly**: Low CO2, 4-6 days
-- 🚚 **Ground**: Standard shipping, 3-5 days  
-- ✈️ **Express**: Fast delivery, 1-2 days
-
-Ready to complete your environmentally conscious purchase? Let me know how I can help! 🌍"""
     
     async def _get_cart_contents(self, session_id: str) -> Dict[str, Any]:
         """Get cart contents from shared cart store."""
@@ -606,223 +652,97 @@ Ready to complete your environmentally conscious purchase? Let me know how I can
         
         return tracking_info
     
-    def _format_checkout_response(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]]) -> str:
-        """Format checkout response."""
-        response = f"🛒 **Ready to Checkout**\n\n"
-        response += f"📦 **Order Summary**:\n"
-        response += f"• Items: {order_totals['item_count']}\n"
-        response += f"• Subtotal: ${order_totals['subtotal']:.2f}\n"
-        response += f"• Tax: ${order_totals['tax']:.2f}\n"
-        response += f"• CO2 Impact: {order_totals['total_co2']:.1f} kg\n\n"
-        
-        response += f"🚚 **Shipping Options** (Choose one):\n"
-        for i, option in enumerate(shipping_options, 1):
-            response += f"{i}. **{option['name']}** - ${option['cost']:.2f}\n"
-            response += f"   • CO2: {option['co2_emissions']:.1f} kg ({option['eco_rating']} Impact)\n"
-            response += f"   • Delivery: {option['delivery_days']} days\n"
-            response += f"   • {option['description']}\n\n"
-        
-        response += f"💡 **Recommendation**: Choose Eco-Friendly shipping for the lowest environmental impact!\n\n"
-        response += f"Ready to proceed? Just say 'proceed to checkout' or specify your shipping preference!"
-        
-        return response
-    
-    def _format_checkout_response_with_shipping(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]], selected_shipping: str) -> str:
-        """Format checkout response with selected shipping method."""
-        # Find the selected shipping option
-        selected_option = None
-        for option in shipping_options:
-            if option['type'] == selected_shipping:
-                selected_option = option
-                break
-        
-        if not selected_option:
-            return self._format_checkout_response(order_totals, shipping_options)
-        
-        # Calculate total CO2 including shipping
-        total_co2 = order_totals['total_co2'] + selected_option['co2_emissions']
-        
-        response = f"🛒 **Ready to Checkout**\n\n"
-        response += f"📦 **Order Summary**:\n"
-        response += f"• Items: {order_totals['item_count']}\n"
-        response += f"• Subtotal: ${order_totals['subtotal']:.2f}\n"
-        response += f"• Tax: ${order_totals['tax']:.2f}\n"
-        response += f"• CO2 Impact: {order_totals['total_co2']:.1f} kg\n\n"
-        
-        response += f"🚚 **Selected Shipping**: {selected_option['name']}\n"
-        response += f"• Cost: ${selected_option['cost']:.2f}\n"
-        response += f"• CO2: {selected_option['co2_emissions']:.1f} kg ({selected_option['eco_rating']} Impact)\n"
-        response += f"• Delivery: {selected_option['delivery_days']} days\n\n"
-        
-        response += f"🌍 **Total CO2**: {total_co2:.1f} kg\n"
-        response += f"💰 **Total Cost**: ${order_totals['subtotal'] + order_totals['tax'] + selected_option['cost']:.2f}\n\n"
-        
-        # Contextual message based on shipping choice
-        if selected_shipping == "eco":
-            response += f"🌱 Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
-        elif selected_shipping == "ground":
-            response += f"🚚 Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
-        else:  # express
-            response += f"⚡ Ready to proceed? Just say 'proceed to checkout' or provide payment details!"
-        
-        return response
-    
-    def _format_shipping_response(self, shipping_options: List[Dict[str, Any]]) -> str:
-        """Format shipping options response."""
-        response = f"🚚 **Available Shipping Options**\n\n"
-        
-        for i, option in enumerate(shipping_options, 1):
-            response += f"{i}. **{option['name']}** - ${option['cost']:.2f}\n"
-            response += f"   • CO2 Emissions: {option['co2_emissions']:.1f} kg\n"
-            response += f"   • Environmental Impact: {option['eco_rating']}\n"
-            response += f"   • Delivery Time: {option['delivery_days']} days\n"
-            response += f"   • {option['description']}\n\n"
-        
-        response += f"🌱 **Eco-Friendly Choice**: Option 1 (Eco-Friendly Shipping) has the lowest CO2 emissions!\n\n"
-        response += f"Which shipping option would you prefer?"
-        
-        return response
-    
-    def _format_payment_success_response(self, order: Dict[str, Any]) -> str:
-        """Format payment success response."""
-        response = f"✅ **Payment Successful!**\n\n"
-        response += f"🎉 **Order Confirmed**: {order['order_id']}\n"
-        response += f"💰 **Total Paid**: ${order['totals']['total']:.2f}\n"
-        # Calculate total CO2 including shipping
-        shipping_method = order['shipping']['method']
-        shipping_co2 = self.shipping_options.get(shipping_method, {}).get('co2_per_mile', 0.0) * 500  # Mock 500 miles
-        total_co2_with_shipping = order['totals']['total_co2'] + shipping_co2
-        
-        response += f"🌍 **Total CO2**: {total_co2_with_shipping:.1f} kg\n"
-        response += f"📦 **Items**: {order['totals']['item_count']}\n\n"
-        
-        response += f"🚚 **Shipping Details**:\n"
-        response += f"• Method: {order['shipping']['method'].title()}\n"
-        response += f"• Tracking: {order['shipping']['tracking_number']}\n"
-        response += f"• Estimated Delivery: {order['estimated_delivery'].strftime('%Y-%m-%d')}\n\n"
-        
-        response += f"📧 **Next Steps**:\n"
-        response += f"• You'll receive an email confirmation shortly\n"
-        response += f"• Track your order with: '{order['order_id']}'\n"
-        response += f"• Estimated delivery: {order['estimated_delivery'].strftime('%B %d, %Y')}\n\n"
-        
-        # Contextual thank you message based on shipping method
-        if shipping_method == "eco":
-            response += f"🌱 **Thank you for choosing environmentally conscious shopping!**"
-        elif shipping_method == "ground":
-            response += f"🚚 **Thank you for your order! Your package will arrive via ground shipping.**"
-        else:  # express
-            response += f"⚡ **Thank you for your order! Your package will arrive via express shipping.**"
-        
-        return response
-    
-    def _format_payment_error_response(self, payment_result: Dict[str, Any]) -> str:
-        """Format payment error response."""
-        response = f"❌ **Payment Failed**\n\n"
-        response += f"Unfortunately, we couldn't process your payment. Please try again with different payment information.\n\n"
-        response += f"💡 **Tips**:\n"
-        response += f"• Check your card number and expiry date\n"
-        response += f"• Ensure sufficient funds are available\n"
-        response += f"• Try a different payment method\n\n"
-        response += f"Would you like to try again?"
-        
-        return response
-    
-    def _format_order_status_response(self, order: Dict[str, Any]) -> str:
-        """Format order status response."""
-        response = f"📋 **Order Status**: {order['order_id']}\n\n"
-        response += f"📦 **Status**: {order['status'].title()}\n"
-        response += f"📅 **Order Date**: {order['created_at'].strftime('%Y-%m-%d %H:%M')}\n"
-        response += f"🚚 **Shipping**: {order['shipping']['method'].title()}\n"
-        response += f"📦 **Tracking**: {order['shipping']['tracking_number']}\n"
-        response += f"📅 **Estimated Delivery**: {order['estimated_delivery'].strftime('%Y-%m-%d')}\n\n"
-        
-        response += f"💰 **Order Total**: ${order['totals']['total']:.2f}\n"
-        response += f"🌍 **CO2 Impact**: {order['totals']['total_co2']:.1f} kg\n\n"
-        
-        response += f"📧 **Need Help?** Contact support with your order number: {order['order_id']}"
-        
-        return response
-    
-    def _format_tracking_response(self, tracking_info: Dict[str, Any]) -> str:
-        """Format tracking response."""
-        response = f"📦 **Order Tracking**: {tracking_info['order_id']}\n\n"
-        response += f"🔍 **Tracking Number**: {tracking_info['tracking_number']}\n"
-        response += f"📍 **Current Location**: {tracking_info['current_location']}\n"
-        response += f"📅 **Estimated Delivery**: {tracking_info['estimated_delivery'].strftime('%Y-%m-%d')}\n\n"
-        
-        response += f"📋 **Tracking History**:\n"
-        for event in tracking_info['tracking_history']:
-            response += f"• {event['timestamp'].strftime('%Y-%m-%d %H:%M')} - {event['location']}: {event['status']}\n"
-        
-        response += f"\n🌱 **Environmental Impact**: Your order was shipped using eco-friendly methods!"
-        
-        return response
-    
-    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a specific task assigned to this agent."""
-        task_type = task.get("type", "unknown")
-        
-        if task_type == "process_checkout":
-            return await self._execute_checkout_task(task)
-        elif task_type == "process_payment":
-            return await self._execute_payment_task(task)
-        elif task_type == "get_order_status":
-            return await self._execute_order_status_task(task)
-        elif task_type == "get_tracking_info":
-            return await self._execute_tracking_task(task)
-        else:
-            return {"error": f"Unknown task type: {task_type}"}
-    
-    async def _execute_checkout_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute checkout task."""
-        session_id = task.get("session_id", "default")
-        cart_contents = await self._get_cart_contents(session_id)
-        order_totals = await self._calculate_order_totals(cart_contents)
-        shipping_options = await self._get_shipping_options(cart_contents)
-        
-        return {
-            "order_totals": order_totals,
-            "shipping_options": shipping_options,
-            "cart_contents": cart_contents
-        }
-    
-    async def _execute_payment_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute payment task."""
-        payment_info = task.get("payment_info", {})
-        session_id = task.get("session_id", "default")
-        
-        payment_result = await self._process_payment(payment_info, session_id)
-        
-        if payment_result["success"]:
-            # Default to eco-friendly shipping for task-based payments
-            shipping_method = "eco"
-            order = await self._create_order(session_id, payment_result, shipping_method)
-            return {
-                "success": True,
-                "order": order,
-                "payment_result": payment_result
-            }
-        else:
-            return {
-                "success": False,
-                "payment_result": payment_result
-            }
-    
-    async def _execute_order_status_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute order status task."""
-        order_id = task.get("order_id")
-        order_status = await self._get_order_status(order_id)
-        
-        return {
-            "order_status": order_status
-        }
-    
-    async def _execute_tracking_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute tracking task."""
-        order_id = task.get("order_id")
-        tracking_info = await self._get_tracking_info(order_id)
-        
-        return {
-            "tracking_info": tracking_info
-        }
+    async def _handle_general_checkout_inquiry(self, message: str, session_id: str) -> str:
+        """Handle general checkout-related inquiries with AI."""
+        prompt = f"""
+        The user has a general question about checkout: "{message}".
+        Explain the checkout process, including shipping options, payment, and environmental considerations.
+        Keep the response conversational and helpful.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "I can help with checkout. What would you like to do?"
+
+    async def _format_checkout_response(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]]) -> str:
+        """Generate an AI-powered checkout response."""
+        prompt = f"""
+        The user is ready to checkout. Here is the order summary:
+        - Order Totals: {json.dumps(order_totals)}
+        - Shipping Options: {json.dumps(shipping_options)}
+
+        Generate a personalized and engaging checkout summary that:
+        1. Summarizes the order (items, subtotal, CO2 impact).
+        2. Presents the shipping options with a clear recommendation for the most eco-friendly choice.
+        3. Encourages the user to select the sustainable option.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Ready to checkout?"
+
+    async def _format_checkout_response_with_shipping(self, order_totals: Dict[str, Any], shipping_options: List[Dict[str, Any]], selected_shipping: str) -> str:
+        """Generate an AI-powered checkout response with a selected shipping method."""
+        prompt = f"""
+        The user is ready to checkout and has selected a shipping method.
+        - Order Totals: {json.dumps(order_totals)}
+        - Selected Shipping: {selected_shipping}
+
+        Generate a personalized checkout summary that:
+        1. Confirms the selected shipping method.
+        2. Provides a complete order summary, including the final total cost and CO2 impact.
+        3. Offers a final encouragement to proceed with the sustainable purchase.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Ready to complete your order?"
+
+    async def _format_shipping_response(self, shipping_options: List[Dict[str, Any]]) -> str:
+        """Generate an AI-powered response for shipping options."""
+        prompt = f"""
+        The user is asking for shipping options. Here are the available options:
+        {json.dumps(shipping_options)}
+
+        Present these options in a clear, user-friendly format. For each option, highlight the cost, delivery time, and environmental impact.
+        Strongly recommend the most eco-friendly option and explain why it's the best choice for the planet.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Here are your shipping options."
+
+    async def _format_payment_success_response(self, order: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for a successful payment."""
+        prompt = f"""
+        The user's payment was successful and the order is confirmed. Here is the order information:
+        {json.dumps(order, default=str)}
+
+        Generate a personalized and enthusiastic order confirmation that:
+        1. Celebrates the successful order.
+        2. Provides a summary of the order (ID, total paid, total CO2).
+        3. Includes shipping and tracking information.
+        4. Thanks the user for making a sustainable choice, especially if they chose eco-friendly shipping.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Payment successful!"
+
+    async def _format_payment_error_response(self, payment_result: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for a failed payment."""
+        prompt = f"""
+        The user's payment failed. Here is the payment result:
+        {json.dumps(payment_result)}
+
+        Generate a helpful and empathetic response that:
+        1. Informs the user that the payment failed.
+        2. Provides clear and simple tips for how to resolve the issue.
+        3. Asks if they would like to try again.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Payment failed. Please try again."
+
+    async def _format_order_status_response(self, order: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for an order status request."""
+        prompt = f"""
+        The user is asking for the status of their order. Here is the order information:
+        {json.dumps(order, default=str)}
+
+        Provide a clear and concise order status update that includes the order ID, status, shipping method, and estimated delivery.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Here is your order status."
+
+    async def _format_tracking_response(self, tracking_info: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for an order tracking request."""
+        prompt = f"""
+        The user is asking for tracking information for their order. Here is the tracking information:
+        {json.dumps(tracking_info, default=str)}
+
+        Provide a detailed tracking update that includes the tracking number, current location, estimated delivery, and tracking history.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Here is your tracking information."
