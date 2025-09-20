@@ -174,13 +174,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
     async def _analyze_intent(self, message: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analyze user intent to determine routing strategy with context awareness.
-        
-        Args:
-            message: User's message
-            context: Session context
-            
-        Returns:
-            Dictionary containing intent analysis
         """
         message_lower = message.lower().strip()
         
@@ -192,6 +185,31 @@ Always provide helpful, environmentally conscious responses that guide users tow
             "intent_type": "unknown",
             "parameters": {}
         }
+
+        # CO2 comparison patterns
+        co2_comparison_keywords = [
+            "co2 impact comparison", "co2 impact between",
+            "for co2", "co2 for", "co2 emissions for",
+            "environmental comparison", "carbon comparison",
+            "impact comparison", "emissions comparison",
+            "compare co2", "co2 comparison", "co2 emissions comparison",
+            "environmental impact comparison", "carbon footprint comparison",
+            "compare emissions", "emissions comparison"
+        ]
+        co2_comparison_regex = [
+            r"compare.*co2", r"co2.*compare",
+            r"compare.*vs.*co2", r"compare.*for.*co2",
+            r"co2.*vs", r"co2.*between"
+        ]
+
+        if any(keyword in message_lower for keyword in co2_comparison_keywords) or \
+           any(re.search(pattern, message_lower) for pattern in co2_comparison_regex):
+            intent["primary_agent"] = "CO2CalculatorAgent"
+            intent["intent_type"] = "environmental_analysis"
+            intent["confidence"] = 0.95
+            intent["parameters"] = {"comparison_mode": True, "query": message}
+            logger.info("Explicitly routing to CO2CalculatorAgent for CO2 comparison query", query=message_lower)
+            return intent
 
         # Cart/checkout explicit patterns
         cart_view_patterns = [

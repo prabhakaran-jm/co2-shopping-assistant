@@ -149,7 +149,7 @@ Always help users understand their environmental impact and guide them toward mo
         if any(word in message_lower for word in ["suggest", "recommend", "alternative", "eco", "green", "tips"]):
             logger.info("Parsed request type as 'suggest'")
             return "suggest"
-        elif any(word in message_lower for word in ["compare", "vs", "versus", "difference", "better"]):
+        elif any(word in message_lower for word in ["compare", "comparison", "vs", "versus", "difference", "better"]):
             logger.info("Parsed request type as 'compare'")
             return "compare"
         elif any(word in message_lower for word in ["analyze", "impact", "environmental", "sustainability"]):
@@ -214,7 +214,7 @@ Always help users understand their environmental impact and guide them toward mo
                 co2_data = await self._calculate_co2_emissions(item)
                 comparison_results.append({"item": item, "co2_data": co2_data})
             
-            return await self._format_co2_comparison_response(comparison_results)
+            return await self._format_co2_comparison_response(comparison_results, message)
 
         except Exception as e:
             logger.error("CO2 comparison failed", error=str(e), exc_info=True)
@@ -348,10 +348,9 @@ Always help users understand their environmental impact and guide them toward mo
         
         return None
     
-    async def _get_product_by_name(self, product_name: str) -> Optional[Dict[str, Any]]:
-        """Get actual product data from the catalog."""
-        # This matches the mock_products data from cart_management_agent.py
-        mock_products = [
+    def _get_mock_products(self) -> List[Dict[str, Any]]:
+        """Return the mock product database."""
+        return [
             {"id": "sunglasses", "name": "Sunglasses", "price": 19.99, "category": "accessories", "co2_emissions": 49.0, "eco_score": 9},
             {"id": "tank-top", "name": "Tank Top", "price": 18.99, "category": "clothing", "co2_emissions": 49.1, "eco_score": 9},
             {"id": "watch", "name": "Watch", "price": 109.99, "category": "accessories", "co2_emissions": 44.5, "eco_score": 4},
@@ -362,6 +361,10 @@ Always help users understand their environmental impact and guide them toward mo
             {"id": "bamboo-glass-jar", "name": "Bamboo Glass Jar", "price": 5.49, "category": "home", "co2_emissions": 49.7, "eco_score": 9},
             {"id": "mug", "name": "Mug", "price": 8.99, "category": "home", "co2_emissions": 49.6, "eco_score": 9}
         ]
+
+    async def _get_product_by_name(self, product_name: str) -> Optional[Dict[str, Any]]:
+        """Get actual product data from the catalog."""
+        mock_products = self._get_mock_products()
         
         # Normalize product name for matching
         product_name_lower = product_name.lower()
@@ -391,22 +394,55 @@ Always help users understand their environmental impact and guide them toward mo
         return None
     
     async def _extract_comparison_parameters(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Extract parameters for CO2 comparison."""
-        # This is a placeholder for a more sophisticated NLP-based extraction
-        # For now, it demonstrates using context if available
-        if context and "items_to_compare" in context:
-            return {"items": context["items_to_compare"]}
+        """Extract product names from comparison queries."""
+        import re
 
         params = {
             "items": [],
             "comparison_criteria": ["total_co2", "manufacturing", "shipping"]
         }
-        
+
+        message_lower = message.lower()
+        product_names = [p["name"].lower() for p in self._get_mock_products()]
+
+        # Handle "between X and Y" format
+        match = re.search(r"between\s+(.*?)\s+and\s+(.*)", message_lower)
+        if match:
+            product1 = match.group(1).strip()
+            product2 = match.group(2).strip()
+            logger.info(f"Regex 'between X and Y' matched. Group 1: '{product1}', Group 2: '{product2}'")
+            logger.info(f"Product names from mock DB: {product_names}")
+
+            product1_found = product1 in product_names
+            product2_found = product2 in product_names
+            logger.info(f"Validation results: product1_found={product1_found}, product2_found={product2_found}")
+
+            # Validate that these are real products
+            if product1_found and product2_found:
+                params["items"] = [{"product_name": product1}, {"product_name": product2}]
+                logger.info(f"Found products for comparison using 'between X and Y' pattern: {[product1, product2]}")
+                return params
+            else:
+                logger.warning("Products from 'between X and Y' regex not found in product list.", product1=product1, product2=product2)
+
+        # Use regex to find all occurrences of product names in the message
+        found_products = []
+        for product_name in product_names:
+            if re.search(r'\b' + re.escape(product_name) + r'\b', message_lower):
+                found_products.append(product_name)
+
+        if len(found_products) >= 2:
+            params["items"] = [{ "product_name": name } for name in found_products]
+            logger.info(f"Found products for comparison: {found_products}")
+            return params
+
+        # Fallback for shipping comparison
         if "ground" in message.lower() and "air" in message.lower():
             params["items"] = [
                 {"shipping_method": "ground", "shipping_distance": 500},
                 {"shipping_method": "air", "shipping_distance": 500}
             ]
+        
         return params
 
     async def _extract_analysis_parameters(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -658,17 +694,26 @@ Always help users understand their environmental impact and guide them toward mo
     
 
     
-    async def _format_co2_comparison_response(self, comparison_results: List[Dict[str, Any]]) -> str:
-        """Format CO2 comparison response with AI-powered insights."""
+    async def _format_co2_comparison_response(self, comparison_results: List[Dict[str, Any]], user_message: str) -> str:
+        """Format CO2 comparison response with intelligent, contextual, and personalized AI-generated content."""
         ai_response = None
         try:
             prompt = f"""
-            Generate a user-friendly comparison of these options: {json.dumps(comparison_results)}.
-            
-            Your response should be a markdown-formatted string that:
-            - Declares a clear winner and explains why.
-            - Provides a concise summary of each option's CO2 impact.
-            - Offers a concluding recommendation.
+            As an expert sustainability advisor, your goal is to help the user make an informed environmental decision.
+
+            The user asked: "{user_message}"
+
+            Here are the CO2 emission details for the options being compared:
+            {json.dumps(comparison_results)}
+
+            Please provide a personalized and contextual comparison that:
+            1.  **Addresses the user directly**: Use "you" and "your".
+            2.  **Provides a clear recommendation**: State which option is more eco-friendly and why.
+            3.  **Explains the trade-offs**: Discuss the pros and cons of each option, considering factors like CO2 emissions, shipping speed, etc.
+            4.  **Gives a relatable analogy**: Frame the CO2 savings in terms of real-world equivalents (e.g., "equivalent to charging your phone X times").
+            5.  **Offers a concluding thought**: End with an encouraging message that reinforces the value of making sustainable choices.
+
+            Your response should be in markdown format, using emojis to make it more engaging.
             """
             
             ai_response = await self._llm_generate_text(self.instruction, prompt)
