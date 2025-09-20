@@ -408,8 +408,8 @@ class CO2ShoppingAssistant {
         // Normalize: remove markdown bold so regex matches labels like **Total CO2**
         const text = response.replace(/\*\*/g, '');
 
-        // 1. Reset state only after cart clearing (not after successful payments)
-        if (/cart\s+has\s+been\s+cleared|empty\s+cart|cart\s+is\s+now\s+empty/i.test(text)) {
+        // 1. Reset state after cart clearing OR successful payments
+        if (/cart\s+has\s+been\s+cleared|empty\s+cart|cart\s+is\s+now\s+empty|Payment\s+Successful|Order\s+Confirmed|order.*confirmed/i.test(text)) {
             this.totalCO2Impact = 0;
             this.totalCO2Saved = 0;
             this.productCO2 = 0;
@@ -468,6 +468,7 @@ class CO2ShoppingAssistant {
         if (cartCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const co2Value = parseFloat(cartCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
+                // This is cart CO2 (products only), don't add shipping
                 this.productCO2 = Math.max(0, co2Value);
                 this.totalCO2Impact = this.productCO2 + this.shippingCO2;
                 this.calculateCO2Savings();
@@ -510,8 +511,10 @@ class CO2ShoppingAssistant {
         if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
-                // Overwrite the total impact, as this is a definitive summary from the backend
+                // This is a definitive total from the backend (product + shipping)
+                // Don't add shipping again - this is the final total
                 this.totalCO2Impact = Math.max(0, co2Value);
+                this.productCO2 = co2Value - this.shippingCO2; // Extract product CO2
                 this.calculateCO2Savings();
                 this.co2Label = 'Total CO₂ Impact';
                 this.updateCO2Display();
