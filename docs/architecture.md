@@ -353,6 +353,17 @@ Checkout Request → Checkout Agent → Boutique MCP → CO2 MCP → Payment →
 - **Database**: Persistent storage for user preferences
 - **CDN**: Global content delivery for improved performance
 
+## Cost Optimization
+
+The CO2-Aware Shopping Assistant implements comprehensive resource optimization strategies to ensure cost-effective deployment on Google Kubernetes Engine. Key optimizations include:
+
+- **Resource Requests/Limits**: Carefully tuned CPU and memory allocations
+- **Horizontal Pod Autoscaling (HPA)**: Intelligent scaling with cost controls
+- **GKE Autopilot**: Automatic resource optimization and cost savings
+- **Monitoring**: Comprehensive resource usage tracking and alerting
+
+📖 **Detailed Documentation**: See [Cost Optimization Guide](../docs/cost-optimization.md) for comprehensive resource optimization strategies, specific configurations, and cost savings analysis.
+
 ## Conclusion
 
 The CO2-Aware Shopping Assistant represents a significant advancement in environmentally conscious e-commerce. By combining Google's ADK with specialized AI agents, MCP servers, and A2A communication protocols, it provides users with intelligent, eco-friendly shopping assistance while maintaining high performance and scalability on Google Kubernetes Engine.

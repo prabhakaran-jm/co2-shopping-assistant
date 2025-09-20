@@ -40,6 +40,8 @@ The application is fully deployed and accessible for testing and evaluation. Use
 
 ## 🏗️ Architecture Highlights
 
+- **Complete Architecture Diagram**: See [Comprehensive Architecture Diagram](docs/architecture-diagram.md) for detailed system architecture, data flow, and technology integration.
+
 ### Multi-Agent System
 The application implements a sophisticated multi-agent architecture where specialized agents handle different aspects of the shopping experience:
 
@@ -61,6 +63,7 @@ The application implements a sophisticated multi-agent architecture where specia
 - **Monitoring**: Prometheus, Grafana, and Jaeger integration
 - **Security**: Network policies and pod security policies
 - **Cost Optimization**: 50% resource reduction through intelligent sizing
+- **Detailed Documentation**: [Cost Optimization Guide](docs/cost-optimization.md)
 
 ## 🔗 Repository URL
 

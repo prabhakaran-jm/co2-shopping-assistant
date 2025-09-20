@@ -35,16 +35,13 @@ data:
         metrics_path: '/stats/prometheus'
         scrape_interval: 15s
         
-      - job_name: 'online-boutique-services-prod'
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names:
-                - online-boutique
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: (cartservice|checkoutservice|paymentservice|productcatalogservice)
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.kube-system.svc.cluster.local:8080']
+
+      - job_name: 'cadvisor'
+        static_configs:
+          - targets: ['kubelet.kube-system.svc.cluster.local:10255']
     
     alerting:
       alertmanagers:

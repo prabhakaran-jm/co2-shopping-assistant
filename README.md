@@ -110,6 +110,8 @@ This project follows the GKE Turns 10 Hackathon guidelines by:
 | **Memory Requests** | 2.2GB | 1.1GB | **50% reduction** |
 | **HPA Efficiency** | 70% CPU target | 80% CPU target | **Better utilization** |
 
+📖 **Detailed Documentation**: See [Cost Optimization Guide](docs/cost-optimization.md) for comprehensive resource optimization strategies and implementation details.
+
 ## 🚀 Quick Start
 
 ### Environment-Specific Deployments
