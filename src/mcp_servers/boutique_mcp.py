@@ -197,12 +197,9 @@ class BoutiqueMCPServer:
         
         # Return mock products if cache is empty - matching UI products
         return [
-            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"]},
-            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"]},
-            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"]},
-            {"id": "mock-4", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
-            {"id": "mock-5", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
-            {"id": "mock-6", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"], "picture": "/ob-images/static/img/products/sunglasses.jpg"},
+            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"], "picture": "/ob-images/static/img/products/watch.jpg"},
+            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"], "picture": "/ob-images/static/img/products/loafers.jpg"},
         ]
 
     @retry_with_breaker("product_catalog", "_fallback_get_product_details")
@@ -237,12 +234,9 @@ class BoutiqueMCPServer:
                 return product
         
         mock_products = [
-            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"]},
-            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"]},
-            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"]},
-            {"id": "mock-4", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
-            {"id": "mock-5", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
-            {"id": "mock-6", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+            {"id": "mock-1", "name": "Sunglasses", "description": "Stylish black sunglasses with UV protection.", "price": 19.99, "categories": ["accessories"], "picture": "/ob-images/static/img/products/sunglasses.jpg"},
+            {"id": "mock-2", "name": "Watch", "description": "Elegant watch with leather strap and gold casing.", "price": 109.99, "categories": ["accessories"], "picture": "/ob-images/static/img/products/watch.jpg"},
+            {"id": "mock-3", "name": "Loafers", "description": "Comfortable beige loafers with tassels.", "price": 89.99, "categories": ["apparel"], "picture": "/ob-images/static/img/products/loafers.jpg"},
         ]
         for product in mock_products:
             if product.get("id") == product_id:

@@ -275,7 +275,6 @@ class CO2ShoppingAssistant {
                     this.extractAndUpdateCO2Savings(text);
                 }
             } catch (e) {
-                console.error('Retry error:', e);
             } finally {
                 this.retry.inFlight = false;
                 this.sendButton.disabled = false;
@@ -314,8 +313,20 @@ class CO2ShoppingAssistant {
         }
         
         // Handle checkout commands that change shipping method
-        if (/checkout with/i.test(this.lastUserMessage || '')) {
-            this.updateShippingSelectionFromCheckoutCommand(this.lastUserMessage, normalized);
+        if (/checkout with|shipping.*ground|shipping.*eco|shipping.*express/i.test(this.lastUserMessage || '')) {
+            this.logAgent(`Detected shipping/checkout command: ${this.lastUserMessage}`);
+            const match = this.lastUserMessage.match(/with\s+(ground|eco|express)/i);
+            if (match && match[1]) {
+                const shippingMethod = match[1].toLowerCase();
+                this.updateShippingSelectionFromCheckoutCommand(shippingMethod);
+            } else {
+                this.logAgent(`Could not extract shipping method from command: ${this.lastUserMessage}`);
+            }
+        }
+        
+        // Handle product responses to render dynamic products
+        if (/show all products|find.*products|search.*products|list all|show me.*products|find watch|find sunglasses|find.*item/i.test(this.lastUserMessage || '')) {
+            this.renderProductsFromResponse(normalized);
         }
     }
 
@@ -348,6 +359,7 @@ class CO2ShoppingAssistant {
         options.forEach(o => {
             const row = document.createElement('div');
             row.className = 'shipping-impact__option';
+            row.dataset.shippingMethod = o.name.toLowerCase(); // Add data-shipping-method
             row.innerHTML = `
                 <div>
                     <div><strong>${o.name}</strong> • ${o.eta}</div>
@@ -356,13 +368,15 @@ class CO2ShoppingAssistant {
                 <div>$${o.price.toFixed(2)}</div>
             `;
             row.onclick = () => {
+                this._updateShippingSelection(row); // Use the new method
+                
                 const delta = o.co2 - minCo2;
                 this.shippingSummaryEl.textContent = delta > 0
                     ? `Selecting this adds +${delta.toFixed(1)} kg CO₂ vs eco option`
                     : `Best choice: lowest CO₂ option`;
                 this.shippingCO2 = Math.max(0, o.co2);
                 this.selectedShippingOption = o.name;
-                this.totalCO2Saved = this.productCO2 + this.shippingCO2;
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
                 this.co2Label = 'Shipping CO₂';
                 this.updateCO2Display();
             };
@@ -443,28 +457,51 @@ class CO2ShoppingAssistant {
         }
 
         // 3. Handle multiple products scenario (e.g., "show all products")
-        const productCountMatch = text.match(/(?:Found|Here are|Here's)\s+(\d+)\s+(?:eco-friendly\s+)?products/i);
-        if (productCountMatch && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
-            const productCount = parseInt(productCountMatch[1]);
-            if (productCount > 1) {
-                // Calculate total CO2 from individual products in the response
-                const co2Matches = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/gi);
-                if (co2Matches && co2Matches.length > 0) {
-                    let totalCo2 = 0;
-                    co2Matches.forEach(match => {
-                        const co2Value = parseFloat(match.match(/(\d+(?:\.\d+)?)/)[1]);
-                        if (!Number.isNaN(co2Value)) {
-                            totalCo2 += co2Value;
-                        }
-                    });
-                    const averageCo2 = totalCo2 / co2Matches.length;
-                    
-                    this.productCO2 = totalCo2;
-                    this.totalCO2Impact = totalCo2;
-                    this.co2Label = 'Product Catalog';
-                    this.updateCO2Display(productCount, averageCo2);
-                    return;
-                }
+        // Check for various patterns that indicate multiple products
+        const productCountPatterns = [
+            /Found\s+(\d+)\s+(?:eco-friendly\s+)?products/i,
+            /Here are\s+(\d+)\s+(?:eco-friendly\s+)?products/i,
+            /Here's\s+(\d+)\s+(?:eco-friendly\s+)?products/i,
+            /(\d+)\s+recommendations/i,
+            /(\d+)\s+results/i,
+            /AI-Powered Product Suggestions.*?(\d+)\s+recommendations/i
+        ];
+        
+        let productCount = 0;
+        for (const pattern of productCountPatterns) {
+            const match = text.match(pattern);
+            if (match) {
+                productCount = parseInt(match[1]);
+                break;
+            }
+        }
+        
+        // Also check if we have multiple product entries (📦 symbols)
+        if (productCount === 0) {
+            const productSymbols = (text.match(/📦/g) || []).length;
+            if (productSymbols > 1) {
+                productCount = productSymbols;
+            }
+        }
+        
+        if (productCount > 1 && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
+            // Calculate total CO2 from individual products in the response
+            const co2Matches = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/gi);
+            if (co2Matches && co2Matches.length > 0) {
+                let totalCo2 = 0;
+                co2Matches.forEach(match => {
+                    const co2Value = parseFloat(match.match(/(\d+(?:\.\d+)?)/)[1]);
+                    if (!Number.isNaN(co2Value)) {
+                        totalCo2 += co2Value;
+                    }
+                });
+                const averageCo2 = totalCo2 / co2Matches.length;
+                
+                this.productCO2 = totalCo2;
+                this.totalCO2Impact = totalCo2;
+                this.co2Label = 'Product Catalog';
+                this.updateCO2Display(productCount, averageCo2);
+                return;
             }
         }
 
@@ -547,19 +584,19 @@ class CO2ShoppingAssistant {
                 `;
             } else {
                 content = `
-                    <div class="co2-widget">
-                        <div class="co2-icon">🌱</div>
-                        <div class="co2-content">
-                            <div class="co2-label">${label}</div>
-                            <div class="co2-value">${this.totalCO2Impact.toFixed(1)} kg</div>
-                            ${this.totalCO2Impact > 0 ? `<div class="co2-breakdown">
-                                ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
-                                ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
-                            </div>` : ''}
-                            ${this.totalCO2Saved > 0 ? `<div class="co2-savings">Saved: ${this.totalCO2Saved.toFixed(1)}kg</div>` : ''}
-                        </div>
+                <div class="co2-widget">
+                    <div class="co2-icon">🌱</div>
+                    <div class="co2-content">
+                        <div class="co2-label">${label}</div>
+                        <div class="co2-value">${this.totalCO2Impact.toFixed(1)} kg</div>
+                        ${this.totalCO2Impact > 0 ? `<div class="co2-breakdown">
+                            ${this.productCO2 > 0 ? `Products: ${this.productCO2.toFixed(1)}kg` : ''}
+                            ${this.shippingCO2 > 0 ? `Shipping: ${this.shippingCO2.toFixed(1)}kg` : ''}
+                        </div>` : ''}
+                        ${this.totalCO2Saved > 0 ? `<div class="co2-savings">Saved: ${this.totalCO2Saved.toFixed(1)}kg</div>` : ''}
                     </div>
-                `;
+                </div>
+            `;
             }
             
             this.co2SavingsElement.innerHTML = content;
@@ -587,14 +624,17 @@ class CO2ShoppingAssistant {
     initializeStaticShippingOptions() {
         const shippingOptions = document.querySelectorAll('.shipping-option');
         shippingOptions.forEach(option => {
+            // Ensure static options also have data-shipping-method for command selection
+            const name = option.querySelector('.shipping-option__name').textContent;
+            option.dataset.shippingMethod = name.toLowerCase();
+
             option.addEventListener('click', () => {
-                shippingOptions.forEach(opt => opt.classList.remove('selected'));
-                option.classList.add('selected');
+                this._updateShippingSelection(option); // Use the new method
                 
                 const co2 = parseFloat(option.dataset.co2);
                 const price = parseFloat(option.dataset.price);
                 const days = option.dataset.days;
-                const name = option.querySelector('.shipping-option__name').textContent;
+                // const name = option.querySelector('.shipping-option__name').textContent; // Already extracted above
                 
                 // Replace shipping CO2 (don't add to existing)
                 this.shippingCO2 = co2;
@@ -607,7 +647,7 @@ class CO2ShoppingAssistant {
                 this.co2Label = 'Total CO₂ Impact';
                 this.updateCO2Display();
                 
-                this.logAgent(`User selected: ${name} shipping (${days}, $${price}, ${co2}kg CO₂)`);
+                this.logAgent(`User selected: ${name} shipping (${days}, ${price}, ${co2}kg CO₂)`);
                 this.sendShippingSelectionToBackend(name);
             });
         });
@@ -621,37 +661,141 @@ class CO2ShoppingAssistant {
             // Update CO2 based on backend response
             this.extractAndUpdateCO2Savings(messageText);
         } catch (error) {
-            console.error("Failed to send shipping selection to backend:", error);
         }
     }
     
-    updateShippingSelectionFromCheckoutCommand(userMessage, responseText) {
-        // Extract shipping method from checkout command
-        const message = userMessage.toLowerCase();
-        let selectedMethod = null;
-        
-        if (message.includes('eco')) {
-            selectedMethod = 'Eco-Friendly';
-        } else if (message.includes('ground')) {
-            selectedMethod = 'Ground';
-        } else if (message.includes('express')) {
-            selectedMethod = 'Express';
+  _updateShippingSelection(selectedOptionElement) {
+    if (!this.shippingOptionsEl) {
+      return;
+    }
+    
+    Array.from(this.shippingOptionsEl.children).forEach((option) => {
+      if (option === selectedOptionElement) {
+        option.classList.add('shipping-impact__option--selected');
+      } else {
+        option.classList.remove('shipping-impact__option--selected');
+      }
+    });
+  }
+
+  updateShippingSelectionFromCheckoutCommand(shippingMethod) {
+
+    if (!this.shippingOptionsEl) {
+      return;
+    }
+
+    const normalizedShippingMethod = shippingMethod.toLowerCase();
+    let selectedOptionElement = null;
+
+    Array.from(this.shippingOptionsEl.children).forEach((option) => {
+      const optionMethod = option.dataset.shippingMethod;
+      if (optionMethod && optionMethod.toLowerCase() === normalizedShippingMethod) {
+        selectedOptionElement = option;
+      }
+    });
+
+    if (selectedOptionElement) {
+      this._updateShippingSelection(selectedOptionElement);
+    } else {
+    }
+  }
+    
+    renderProductsFromResponse(responseText) {
+        if (!this.productGrid) {
+            this.logAgent('Product grid not found, cannot render products');
+            return;
         }
         
-        if (selectedMethod && this.shippingOptionsEl) {
-            // Update visual selection
-            const shippingOptions = this.shippingOptionsEl.querySelectorAll('.shipping-option');
-            shippingOptions.forEach(option => {
-                option.classList.remove('selected');
-                const optionName = option.querySelector('.shipping-option__name').textContent;
-                if (optionName === selectedMethod) {
-                    option.classList.add('selected');
-                }
+        // Extract products from AI response text
+        const products = this.extractProductsFromText(responseText);
+        this.logAgent(`Extracted ${products.length} products from response`);
+        
+        if (products.length > 0) {
+            // Clear existing products
+            this.productGrid.innerHTML = '';
+            
+            // Render each product
+            products.forEach(product => {
+                const productCard = this.createProductCard(product);
+                this.productGrid.appendChild(productCard);
             });
             
-            // Update internal state
-            this.selectedShippingOption = selectedMethod;
-            this.logAgent(`Shipping method updated to: ${selectedMethod}`);
+            // Add compare buttons to the newly rendered products
+            this.addComparisonButtons();
+            
+            this.logAgent(`Successfully rendered ${products.length} products with compare buttons`);
+        } else {
+            this.logAgent('No products found in response, keeping existing products');
+        }
+    }
+    
+    extractProductsFromText(text) {
+        const products = [];
+        
+        // Split text by product sections (📦 symbols)
+        const productSections = text.split(/📦/).slice(1); // Remove first empty section
+        
+        productSections.forEach(section => {
+            // Extract product name (remove markdown formatting)
+            const nameMatch = section.match(/^\s*\*?\*?([^*\n]+?)\*?\*?\s*\n/);
+            if (!nameMatch) return;
+            
+            const name = nameMatch[1].trim();
+            
+            // Extract price
+            const priceMatch = section.match(/💰\s*Price:\s*\$([\d.]+)/);
+            if (!priceMatch) return;
+            
+            const price = parseFloat(priceMatch[1]);
+            
+            // Extract CO2 impact
+            const co2Match = section.match(/🌍\s*CO2\s*Impact:\s*([\d.]+)\s*kg/);
+            if (!co2Match) return;
+            
+            const co2 = parseFloat(co2Match[1]);
+            
+            // Generate image path based on product name
+            const imagePath = this.getProductImagePath(name);
+            
+            products.push({
+                name: name,
+                price: price,
+                co2: co2,
+                eco: Math.min(10, Math.max(1, Math.round(10 - (co2 / 10)))), // Calculate eco score based on CO2
+                img: imagePath
+            });
+        });
+        
+        return products;
+    }
+    
+    getProductImagePath(productName) {
+        // Map product names to actual Online Boutique image paths
+        const name = productName.toLowerCase();
+        
+        if (name.includes('sunglasses') || name.includes('glasses')) {
+            return '/ob-images/static/img/products/sunglasses.jpg';
+        } else if (name.includes('watch')) {
+            return '/ob-images/static/img/products/watch.jpg';
+        } else if (name.includes('loafers') || name.includes('shoes')) {
+            return '/ob-images/static/img/products/loafers.jpg';
+        } else if (name.includes('shirt') || name.includes('t-shirt') || name.includes('tank top')) {
+            return '/ob-images/static/img/products/tank-top.jpg';
+        } else if (name.includes('laptop')) {
+            return '/ob-images/static/img/products/laptop.jpg';
+        } else if (name.includes('hairdryer') || name.includes('hair dryer')) {
+            return '/ob-images/static/img/products/hairdryer.jpg';
+        } else if (name.includes('candle') || name.includes('holder')) {
+            return '/ob-images/static/img/products/candle-holder.jpg';
+        } else if (name.includes('salt') || name.includes('pepper') || name.includes('shaker')) {
+            return '/ob-images/static/img/products/salt-and-pepper-shakers.jpg';
+        } else if (name.includes('bamboo') || name.includes('jar')) {
+            return '/ob-images/static/img/products/bamboo-glass-jar.jpg';
+        } else if (name.includes('mug')) {
+            return '/ob-images/static/img/products/mug.jpg';
+        } else {
+            // Use sunglasses as fallback instead of non-existent default.jpg
+            return '/ob-images/static/img/products/sunglasses.jpg';
         }
     }
     
@@ -913,11 +1057,11 @@ class CO2ShoppingAssistant {
                 const cartImpactMatch = text.match(/Total\s+CO[₂2]\s*impact.*?(\d+(?:\.\d+)?)\s*kg/i);
                 if (cartImpactMatch && cartImpactMatch[1]) {
                     this.productCO2 = parseFloat(cartImpactMatch[1]);
-                } else {
-                    // Look for individual product CO2 and add it
-                    const productCo2Match = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-                    if (productCo2Match && productCo2Match[1]) {
-                        this.productCO2 += parseFloat(productCo2Match[1]);
+            } else {
+                // Look for individual product CO2 and add it
+                const productCo2Match = text.match(/CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
+                if (productCo2Match && productCo2Match[1]) {
+                    this.productCO2 += parseFloat(productCo2Match[1]);
                     }
                 }
             }
