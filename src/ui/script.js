@@ -312,6 +312,11 @@ class CO2ShoppingAssistant {
         if (/Shipping\s+Options/i.test(normalized) || /shipping|delivery|express/i.test(this.lastUserMessage || '')) {
             this.renderShippingOptionsFromText(normalized);
         }
+        
+        // Handle checkout commands that change shipping method
+        if (/checkout with/i.test(this.lastUserMessage || '')) {
+            this.updateShippingSelectionFromCheckoutCommand(this.lastUserMessage, normalized);
+        }
     }
 
     renderShippingOptionsFromText(text) {
@@ -438,7 +443,7 @@ class CO2ShoppingAssistant {
         }
 
         // 3. Handle multiple products scenario (e.g., "show all products")
-        const productCountMatch = text.match(/Found\s+(\d+)\s+eco-friendly\s+products/i);
+        const productCountMatch = text.match(/(?:Found|Here are|Here's)\s+(\d+)\s+(?:eco-friendly\s+)?products/i);
         if (productCountMatch && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
             const productCount = parseInt(productCountMatch[1]);
             if (productCount > 1) {
@@ -617,6 +622,36 @@ class CO2ShoppingAssistant {
             this.extractAndUpdateCO2Savings(messageText);
         } catch (error) {
             console.error("Failed to send shipping selection to backend:", error);
+        }
+    }
+    
+    updateShippingSelectionFromCheckoutCommand(userMessage, responseText) {
+        // Extract shipping method from checkout command
+        const message = userMessage.toLowerCase();
+        let selectedMethod = null;
+        
+        if (message.includes('eco')) {
+            selectedMethod = 'Eco-Friendly';
+        } else if (message.includes('ground')) {
+            selectedMethod = 'Ground';
+        } else if (message.includes('express')) {
+            selectedMethod = 'Express';
+        }
+        
+        if (selectedMethod && this.shippingOptionsEl) {
+            // Update visual selection
+            const shippingOptions = this.shippingOptionsEl.querySelectorAll('.shipping-option');
+            shippingOptions.forEach(option => {
+                option.classList.remove('selected');
+                const optionName = option.querySelector('.shipping-option__name').textContent;
+                if (optionName === selectedMethod) {
+                    option.classList.add('selected');
+                }
+            });
+            
+            // Update internal state
+            this.selectedShippingOption = selectedMethod;
+            this.logAgent(`Shipping method updated to: ${selectedMethod}`);
         }
     }
     
