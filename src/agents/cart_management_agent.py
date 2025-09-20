@@ -163,143 +163,85 @@ Always help users make environmentally conscious cart decisions while meeting th
     async def _handle_add_to_cart(self, message: str, session_id: str) -> str:
         """Handle add to cart requests."""
         try:
-            msg = message.lower()
-            # Multi-item support: split by ' and ' or ',' before adding
-            candidate = await self._extract_product_info(message)
-            # If candidate still includes connectors, treat as multi
-            if candidate and (" and " in candidate.lower() or "," in candidate):
-                tmp = candidate
-                parts = [p.strip() for p in re.split(r",| and ", tmp) if p.strip()]
-                added = []
-                for part in parts:
-                    details = await self._get_product_details(part)
-                    if details:
-                        await self._add_item_to_cart(details, session_id)
-                        added.append(details["name"])
-                if added:
-                    totals = await self._calculate_cart_totals(session_id)
-                    names = ", ".join(added)
-                    return f"✅ **Added to Cart**: {names}\n\n" + self._format_view_cart_response(await self._get_cart_contents(session_id), totals)
-            if not candidate and (" and " in msg or "," in msg):
-                # Try to extract between 'add' and 'to cart'
-                tmp = msg
-                if "to my cart" in tmp:
-                    tmp = tmp.replace("to my cart", "to cart")
-                if "add" in tmp and "to cart" in tmp:
-                    between = tmp.split("add", 1)[1].split("to cart", 1)[0].strip()
-                    parts = [p.strip() for p in re.split(r",| and ", between) if p.strip()]
-                    added = []
-                    for part in parts:
-                        details = await self._get_product_details(part)
-                        if details:
-                            await self._add_item_to_cart(details, session_id)
-                            added.append(details["name"])
-                    if added:
-                        totals = await self._calculate_cart_totals(session_id)
-                        names = ", ".join(added)
-                        return f"✅ **Added to Cart**: {names}\n\n" + self._format_view_cart_response(await self._get_cart_contents(session_id), totals)
-            
-            # Single-item flow
-            product_info = candidate
+            product_info = await self._extract_product_info(message)
             if not product_info:
-                return "I need more information to add an item to your cart. Please specify the product name, ID, or description."
+                return "I need more information to add an item to your cart. Please specify the product name."
+
             product_details = await self._get_product_details(product_info)
             if not product_details:
-                return f"I couldn't find the product '{product_info}'. Please check the product name or try a different search term."
+                return f"I couldn't find the product '{product_info}'. Please try another name."
+
             cart_item = await self._add_item_to_cart(product_details, session_id)
             cart_totals = await self._calculate_cart_totals(session_id)
-            return self._format_add_to_cart_response(cart_item, cart_totals)
-            
+            return await self._format_add_to_cart_response(cart_item, cart_totals)
+
         except Exception as e:
-            logger.error("Add to cart failed", error=str(e))
+            logger.error("Add to cart failed", error=str(e), exc_info=True)
             return f"I encountered an error while adding the item to your cart: {str(e)}"
-    
+
     async def _handle_remove_from_cart(self, message: str, session_id: str) -> str:
         """Handle remove from cart requests."""
         try:
-            # Extract item identifier
             item_identifier = await self._extract_item_identifier(message)
-            
             if not item_identifier:
-                return "I need to know which item to remove from your cart. Please specify the product name or ID."
-            
-            # Remove from cart
+                return "I need to know which item to remove. Please specify the product name."
+
             removed_item = await self._remove_item_from_cart(item_identifier, session_id)
-            
             if not removed_item:
-                return f"I couldn't find '{item_identifier}' in your cart. Please check the item name or ID."
-            
-            # Calculate updated cart totals
+                return f"I couldn't find '{item_identifier}' in your cart."
+
             cart_totals = await self._calculate_cart_totals(session_id)
-            
-            # Format response
-            response = self._format_remove_from_cart_response(removed_item, cart_totals)
-            
-            return response
-            
+            return await self._format_remove_from_cart_response(removed_item, cart_totals)
+
         except Exception as e:
-            logger.error("Remove from cart failed", error=str(e))
-            return "I encountered an error while removing the item from your cart. Please try again."
-    
+            logger.error("Remove from cart failed", error=str(e), exc_info=True)
+            return "I encountered an error while removing the item from your cart."
+
     async def _handle_update_cart(self, message: str, session_id: str) -> str:
         """Handle cart update requests."""
         try:
-            # Extract update parameters
             update_params = await self._extract_update_parameters(message)
-            
             if not update_params:
-                return "I need more information to update your cart. Please specify the item and the changes you'd like to make."
-            
-            # Update cart item
+                return "I need more information to update your cart. Please specify the item and quantity."
+
             updated_item = await self._update_cart_item(update_params, session_id)
-            
             if not updated_item:
-                return f"I couldn't find the item to update. Please check the item name or ID."
-            
-            # Calculate updated cart totals
+                return f"I couldn't find the item to update."
+
             cart_totals = await self._calculate_cart_totals(session_id)
-            
-            # Format response
-            response = self._format_update_cart_response(updated_item, cart_totals)
-            
-            return response
-            
+            return await self._format_update_cart_response(updated_item, cart_totals)
+
         except Exception as e:
-            logger.error("Cart update failed", error=str(e))
-            return "I encountered an error while updating your cart. Please try again."
-    
+            logger.error("Cart update failed", error=str(e), exc_info=True)
+            return "I encountered an error while updating your cart."
+
     async def _handle_view_cart(self, message: str, session_id: str) -> str:
         """Handle view cart requests."""
         try:
-            # Get cart contents
+            logger.info(f"Handling view cart for session_id: {session_id}")
             cart_contents = await self._get_cart_contents(session_id)
-            
+            logger.info(f"Retrieved cart contents for session_id: {session_id}", cart_contents=cart_contents)
+
             if not cart_contents["items"]:
                 return "Your cart is empty. Would you like to browse some eco-friendly products?"
-            
-            # Calculate cart totals
+
             cart_totals = await self._calculate_cart_totals(session_id)
-            
-            # Format response
-            response = self._format_view_cart_response(cart_contents, cart_totals)
-            
-            return response
-            
+            return await self._format_view_cart_response(cart_contents, cart_totals)
+
         except Exception as e:
-            logger.error("View cart failed", error=str(e))
-            return "I encountered an error while retrieving your cart. Please try again."
-    
+            logger.error("View cart failed", error=str(e), exc_info=True)
+            return "I encountered an error while retrieving your cart."
+
     async def _handle_clear_cart(self, message: str, session_id: str) -> str:
         """Handle clear cart requests."""
         try:
-            # Clear cart
+            cart_totals = await self._calculate_cart_totals(session_id)
             await self._clear_cart(session_id)
-            # Return empty cart view to confirm
-            return "🛒 Your cart has been cleared. You can start fresh with eco-friendly products!"
-            
+            return await self._format_clear_cart_response(cart_totals)
+
         except Exception as e:
-            logger.error("Clear cart failed", error=str(e))
-            return "I encountered an error while clearing your cart. Please try again."
+            logger.error("Clear cart failed", error=str(e), exc_info=True)
+            return "I encountered an error while clearing your cart."
     
     async def _handle_cart_suggestions(self, message: str, session_id: str) -> str:
         """Handle cart suggestion requests."""
@@ -524,23 +466,32 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
         return None
     
     async def _get_cart_contents(self, session_id: str) -> Dict[str, Any]:
-        """Get cart contents."""
-        cart = cart_store.get_or_create_cart(session_id)
-        # Collapse items by product id to ensure accurate counts
-        collapsed = {}
-        for item in cart["items"]:
-            key = item["product_id"]
-            if key in collapsed:
-                collapsed[key]["quantity"] += item.get("quantity", 1)
-            else:
-                collapsed[key] = item.copy()
-                if "quantity" not in collapsed[key]:
-                    collapsed[key]["quantity"] = 1
-        return {
-            "items": list(collapsed.values()),
-            "created_at": cart["created_at"],
-            "last_updated": cart["last_updated"]
-        }
+        """Get cart contents with improved error handling."""
+        try:
+            cart = cart_store.get_or_create_cart(session_id)
+            # Collapse items by product id to ensure accurate counts
+            collapsed = {}
+            for item in cart["items"]:
+                key = item["product_id"]
+                if key in collapsed:
+                    collapsed[key]["quantity"] += item.get("quantity", 1)
+                else:
+                    collapsed[key] = item.copy()
+                    if "quantity" not in collapsed[key]:
+                        collapsed[key]["quantity"] = 1
+            return {
+                "items": list(collapsed.values()),
+                "created_at": cart["created_at"],
+                "last_updated": cart["last_updated"]
+            }
+        except Exception as e:
+            logger.error("Failed to get or process cart contents", error=str(e), session_id=session_id, exc_info=True)
+            # Return an empty cart structure on failure to prevent downstream errors
+            return {
+                "items": [],
+                "created_at": datetime.now(),
+                "last_updated": datetime.now()
+            }
     
     async def _clear_cart(self, session_id: str):
         """Clear cart contents."""
@@ -622,85 +573,98 @@ What would you like to do with your cart? I'll make sure to highlight the enviro
         
         return suggestions
     
-    def _format_add_to_cart_response(self, cart_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
-        """Format add to cart response."""
-        response = f"✅ **Added to Cart**: {cart_item['name']}\n\n"
-        response += f"💰 **Price**: ${cart_item['price']:.2f}\n"
-        response += f"🌍 **CO2 Impact**: {cart_item['co2_emissions']:.1f} kg CO2\n"
-        response += f"⭐ **Eco Score**: {cart_item['eco_score']}/10\n"
-        response += f"📦 **Quantity**: {cart_item['quantity']}\n\n"
-        
-        response += f"🛒 **Cart Summary**:\n"
-        response += f"• Total Items: {cart_totals['item_count']}\n"
-        response += f"• Total Value: ${cart_totals['total_value']:.2f}\n"
-        response += f"• Total CO2: {cart_totals['total_co2']:.1f} kg ({cart_totals['eco_rating']} Impact)\n\n"
-        
-        if cart_totals['eco_rating'] in ['High', 'Very High']:
-            response += "💡 **Tip**: Consider eco-friendly alternatives to reduce your environmental impact!"
-        
-        return response
-    
-    def _format_remove_from_cart_response(self, removed_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
-        """Format remove from cart response."""
-        response = f"🗑️ **Removed from Cart**: {removed_item['name']}\n\n"
-        response += f"🛒 **Updated Cart Summary**:\n"
-        response += f"• Total Items: {cart_totals['item_count']}\n"
-        response += f"• Total Value: ${cart_totals['total_value']:.2f}\n"
-        response += f"• Total CO2: {cart_totals['total_co2']:.1f} kg ({cart_totals['eco_rating']} Impact)\n\n"
-        
-        if cart_totals['item_count'] == 0:
-            response += "Your cart is now empty. Would you like to browse some eco-friendly products?"
-        
-        return response
-    
-    def _format_update_cart_response(self, updated_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
-        """Format update cart response."""
-        response = f"📝 **Updated Cart Item**: {updated_item['name']}\n\n"
-        response += f"📦 **New Quantity**: {updated_item['quantity']}\n"
-        response += f"💰 **Item Value**: ${updated_item['price'] * updated_item['quantity']:.2f}\n"
-        response += f"🌍 **CO2 Impact**: {updated_item['co2_emissions'] * updated_item['quantity']:.1f} kg CO2\n\n"
-        
-        response += f"🛒 **Cart Summary**:\n"
-        response += f"• Total Items: {cart_totals['item_count']}\n"
-        response += f"• Total Value: ${cart_totals['total_value']:.2f}\n"
-        response += f"• Total CO2: {cart_totals['total_co2']:.1f} kg ({cart_totals['eco_rating']} Impact)\n"
-        
-        return response
-    
-    def _format_view_cart_response(self, cart_contents: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
-        """Format view cart response."""
-        response = f"🛒 **Your Shopping Cart** ({cart_totals['item_count']} items)\n\n"
-        
-        for i, item in enumerate(cart_contents["items"], 1):
-            response += f"{i}. **{item['name']}**\n"
-            response += f"   • Quantity: {item['quantity']}\n"
-            response += f"   • Price: ${item['price']:.2f} each\n"
-            response += f"   • CO2 Impact: {item['co2_emissions']:.1f} kg each\n"
-            response += f"   • Eco Score: {item['eco_score']}/10\n\n"
-        
-        response += f"💰 **Cart Totals**:\n"
-        response += f"• **Total Value**: ${cart_totals['total_value']:.2f}\n"
-        response += f"• **Total CO2**: {cart_totals['total_co2']:.1f} kg ({cart_totals['eco_rating']} Impact)\n"
-        response += f"• **Average CO2 per Item**: {cart_totals['average_co2_per_item']:.1f} kg\n\n"
-        
-        if cart_totals['eco_rating'] in ['High', 'Very High']:
-            response += "💡 **Sustainability Tip**: Consider eco-friendly alternatives to reduce your environmental impact!"
-        
-        return response
-    
-    def _format_cart_suggestions_response(self, suggestions: List[Dict[str, Any]]) -> str:
-        """Format cart suggestions response."""
-        response = "🌱 **Cart Optimization Suggestions**\n\n"
-        
-        for i, suggestion in enumerate(suggestions, 1):
-            response += f"{i}. **{suggestion['title']}**\n"
-            response += f"   • {suggestion['description']}\n"
-            response += f"   • CO2 Reduction: {suggestion['co2_reduction']}\n"
-            response += f"   • Impact: {suggestion['impact']}\n\n"
-        
-        response += "💡 These suggestions can help you reduce your environmental impact while shopping!"
-        
-        return response
+    async def _format_add_to_cart_response(self, cart_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for adding an item to the cart."""
+        prompt = f"""
+        The user just added "{cart_item['name']}" to their cart.
+        The item's CO2 impact is {cart_item['co2_emissions']:.1f} kg.
+        The cart now has {cart_totals['item_count']} items with a total CO2 impact of {cart_totals['total_co2']:.1f} kg.
+
+        Generate a friendly, conversational response that:
+        1. Confirms the item was added.
+        2. Briefly mentions the item's environmental impact.
+        3. Provides a relevant sustainability tip.
+        4. Includes the cart summary (total items, total CO2).
+        5. Uses emojis to be more engaging.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Item added to cart."
+
+    async def _format_remove_from_cart_response(self, removed_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for removing an item from the cart."""
+        prompt = f"""
+        The user just removed "{removed_item['name']}" from their cart.
+        The cart now has {cart_totals['item_count']} items with a total CO2 impact of {cart_totals['total_co2']:.1f} kg.
+
+        Generate a friendly, conversational response that:
+        1. Confirms the item was removed.
+        2. If the cart is not empty, provides the updated cart summary.
+        3. If the cart is empty, encourages the user to find some eco-friendly products.
+        4. Suggests a more sustainable alternative to the removed item.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Item removed from cart."
+
+    async def _format_update_cart_response(self, updated_item: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for updating a cart item."""
+        prompt = f"""
+        The user just updated the quantity of "{updated_item['name']}" to {updated_item['quantity']}.
+        The cart now has {cart_totals['item_count']} items with a total CO2 impact of {cart_totals['total_co2']:.1f} kg.
+
+        Generate a friendly, conversational response that:
+        1. Confirms the quantity was updated.
+        2. Provides the updated cart summary.
+        3. Briefly analyzes the impact of the quantity change on the cart's total CO2.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Cart updated."
+
+    def _serialize_cart_items(self, items: List[Dict[str, Any]]) -> str:
+        """Serialize cart items to JSON, handling datetime objects."""
+        def default_serializer(o):
+            if isinstance(o, datetime):
+                return o.isoformat()
+            raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
+
+        return json.dumps(items, default=default_serializer)
+
+    async def _format_view_cart_response(self, cart_contents: Dict[str, Any], cart_totals: Dict[str, Any]) -> str:
+        """Generate an AI-powered analysis of the user's cart."""
+        prompt = f"""
+        The user is viewing their cart. Here are the details:
+        - Items: {self._serialize_cart_items(cart_contents['items'])}
+        - Totals: {json.dumps(cart_totals)}
+
+        Generate a comprehensive and personalized analysis of the cart that includes:
+        1. A friendly and engaging opening.
+        2. A summary of the cart's contents (number of items, total value).
+        3. A detailed analysis of the cart's total CO2 emissions, with a relatable analogy (e.g., equivalent to driving X miles).
+        4. A sustainability score for the cart.
+        5. Actionable recommendations for reducing the cart's carbon footprint (e.g., suggesting alternatives for high-impact items).
+        6. A concluding, encouraging message.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Here are the items in your cart."
+
+    async def _format_clear_cart_response(self, cleared_cart_totals: Dict[str, Any]) -> str:
+        """Generate an AI-powered response for clearing the cart."""
+        prompt = f"""
+        The user has cleared their cart.
+        The cleared cart had a total CO2 impact of {cleared_cart_totals['total_co2']:.1f} kg.
+
+        Generate a friendly and encouraging response that:
+        1. Confirms the cart was cleared.
+        2. Briefly mentions the environmental impact of the items that were in the cart.
+        3. Encourages the user to start fresh with some eco-friendly product suggestions.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Your cart has been cleared."
+
+    async def _format_cart_suggestions_response(self, suggestions: List[Dict[str, Any]]) -> str:
+        """Generate an AI-powered response for cart suggestions."""
+        prompt = f"""
+        Here are some suggestions to make the user's cart more sustainable:
+        {json.dumps(suggestions)}
+
+        Format these suggestions into a friendly, conversational, and easy-to-read response.
+        For each suggestion, explain the environmental benefit.
+        """
+        return await self._llm_generate_text(self.instruction, prompt) or "Here are some suggestions for your cart."
     
     async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a specific task assigned to this agent."""
