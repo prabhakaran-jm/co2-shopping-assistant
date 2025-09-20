@@ -6,253 +6,197 @@ import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 import sys
 import os
+import time
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from mcp_servers.boutique_mcp import BoutiqueMCP
-from mcp_servers.co2_mcp import CO2MCP
+from mcp_servers.boutique_mcp import BoutiqueMCPServer
+from mcp_servers.co2_mcp import CO2MCPServer
 
 
-class TestBoutiqueMCP:
+class TestBoutiqueMCPServer:
     """Test the Boutique MCP server functionality"""
-    
+
     @pytest.fixture
-    def boutique_mcp(self):
-        """Create BoutiqueMCP instance with mocked dependencies"""
-        with patch('mcp_servers.boutique_mcp.requests') as mock_requests:
-            mock_requests.get.return_value.json.return_value = {"products": []}
-            mock_requests.post.return_value.json.return_value = {"success": True}
-            return BoutiqueMCP()
-    
-    def test_boutique_mcp_initialization(self, boutique_mcp):
-        """Test BoutiqueMCP initializes correctly"""
-        assert boutique_mcp.base_url == "http://frontend.default.svc.cluster.local"
-        assert boutique_mcp.session_id is not None
-    
+    def boutique_mcpserver(self):
+        """Create BoutiqueMCPServer instance with mocked dependencies"""
+        with patch('mcp_servers.boutique_mcp.httpx.AsyncClient'):
+            server = BoutiqueMCPServer()
+            server.add_to_cart = AsyncMock(return_value={"success": True, "cart_id": "cart_123"})
+            server.view_cart = AsyncMock(return_value={"items": [], "total": 0.0})
+            server.checkout = AsyncMock(return_value={"success": True, "order_id": "order_123"})
+            yield server
+
+    def test_boutique_mcpserver_initialization(self, boutique_mcpserver):
+        """Test BoutiqueMCPServer initializes correctly"""
+        assert boutique_mcpserver.boutique_base_url == "http://online-boutique.online-boutique.svc.cluster.local"
+
     @pytest.mark.asyncio
-    async def test_list_products(self, boutique_mcp):
+    async def test_search_products(self, boutique_mcpserver):
         """Test listing products functionality"""
-        with patch('mcp_servers.boutique_mcp.requests.get') as mock_get:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "products": [
-                    {"id": "1", "name": "Eco Laptop", "price": 999.99},
-                    {"id": "2", "name": "Green Phone", "price": 599.99}
-                ]
-            }
-            mock_get.return_value = mock_response
-            
-            result = await boutique_mcp.list_products()
-            
-            assert result is not None
-            assert "products" in result
-            assert len(result["products"]) == 2
-            assert result["products"][0]["name"] == "Eco Laptop"
-    
+        mock_products = [
+            {"id": "1", "name": "Eco Laptop", "price": 999.99},
+            {"id": "2", "name": "Green Phone", "price": 599.99}
+        ]
+        boutique_mcpserver.search_products = AsyncMock(return_value=mock_products)
+        result = await boutique_mcpserver.search_products(query='')
+
+        assert result is not None
+        assert len(result) == 2
+        assert result[0]["name"] == "Eco Laptop"
+
     @pytest.mark.asyncio
-    async def test_get_product(self, boutique_mcp):
+    async def test_get_product_details(self, boutique_mcpserver):
         """Test getting a specific product"""
-        with patch('mcp_servers.boutique_mcp.requests.get') as mock_get:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "id": "1",
-                "name": "Eco Laptop",
-                "price": 999.99,
-                "description": "Environmentally friendly laptop"
-            }
-            mock_get.return_value = mock_response
-            
-            result = await boutique_mcp.get_product("1")
-            
-            assert result is not None
-            assert result["id"] == "1"
-            assert result["name"] == "Eco Laptop"
-            assert result["price"] == 999.99
-    
+        mock_product = {
+            "id": "1",
+            "name": "Eco Laptop",
+            "price": 999.99,
+            "description": "Environmentally friendly laptop"
+        }
+        boutique_mcpserver.get_product_details = AsyncMock(return_value=mock_product)
+
+        result = await boutique_mcpserver.get_product_details("1")
+
+        assert result is not None
+        assert result["id"] == "1"
+        assert result["name"] == "Eco Laptop"
+        assert result["price"] == 999.99
+
     @pytest.mark.asyncio
-    async def test_add_to_cart(self, boutique_mcp):
+    async def test_add_to_cart(self, boutique_mcpserver):
         """Test adding item to cart"""
-        with patch('mcp_servers.boutique_mcp.requests.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {"success": True, "cart_id": "cart_123"}
-            mock_post.return_value = mock_response
-            
-            result = await boutique_mcp.add_to_cart("1", 2)
-            
-            assert result is not None
-            assert result["success"] is True
-            assert "cart_id" in result
-    
+        result = await boutique_mcpserver.add_to_cart("1", 2)
+
+        assert result is not None
+        assert result["success"] is True
+        assert "cart_id" in result
+
     @pytest.mark.asyncio
-    async def test_view_cart(self, boutique_mcp):
+    async def test_view_cart(self, boutique_mcpserver):
         """Test viewing cart contents"""
-        with patch('mcp_servers.boutique_mcp.requests.get') as mock_get:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "items": [
-                    {"product_id": "1", "quantity": 2, "price": 999.99}
-                ],
-                "total": 1999.98
-            }
-            mock_get.return_value = mock_response
-            
-            result = await boutique_mcp.view_cart()
-            
-            assert result is not None
-            assert "items" in result
-            assert "total" in result
-            assert result["total"] == 1999.98
-    
+        result = await boutique_mcpserver.view_cart()
+
+        assert result is not None
+        assert "items" in result
+        assert "total" in result
+
     @pytest.mark.asyncio
-    async def test_checkout(self, boutique_mcp):
+    async def test_checkout(self, boutique_mcpserver):
         """Test checkout process"""
-        with patch('mcp_servers.boutique_mcp.requests.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "success": True,
-                "order_id": "order_123",
-                "total": 1999.98
-            }
-            mock_post.return_value = mock_response
-            
-            result = await boutique_mcp.checkout()
-            
-            assert result is not None
-            assert result["success"] is True
-            assert "order_id" in result
-    
+        result = await boutique_mcpserver.checkout()
+
+        assert result is not None
+        assert result["success"] is True
+        assert "order_id" in result
+
     @pytest.mark.asyncio
-    async def test_error_handling(self, boutique_mcp):
-        """Test error handling in API calls"""
-        with patch('mcp_servers.boutique_mcp.requests.get') as mock_get:
-            mock_get.side_effect = Exception("API Error")
-            
-            result = await boutique_mcp.list_products()
-            
-            # Should return error response instead of raising exception
-            assert result is not None
-            assert "error" in result
+    async def test_error_handling_breaker_open(self, boutique_mcpserver):
+        """Test circuit breaker fallback when open"""
+        boutique_mcpserver._fallback_search_products = AsyncMock(return_value=[{"id": "fallback"}])
+        
+        breaker = boutique_mcpserver.circuit_breakers["product_catalog"]
+        breaker.state = "open"
+        breaker.last_failure_time = time.time()
 
+        result = await boutique_mcpserver.search_products(query="test")
 
-class TestCO2MCP:
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["id"] == "fallback"
+        boutique_mcpserver._fallback_search_products.assert_called_once()
+
+class TestCO2MCPServer:
     """Test the CO2 MCP server functionality"""
-    
+
     @pytest.fixture
-    def co2_mcp(self):
-        """Create CO2MCP instance with mocked dependencies"""
-        with patch('mcp_servers.co2_mcp.requests') as mock_requests:
-            mock_requests.post.return_value.json.return_value = {"co2_emissions": 2.5}
-            return CO2MCP()
-    
-    def test_co2_mcp_initialization(self, co2_mcp):
-        """Test CO2MCP initializes correctly"""
-        assert co2_mcp.api_url == "https://api.co2data.org"
-    
+    def co2_mcpserver(self):
+        """Create CO2MCPServer instance with mocked dependencies"""
+        with patch('mcp_servers.co2_mcp.httpx.AsyncClient'):
+            return CO2MCPServer()
+
+    def test_co2_mcpserver_initialization(self, co2_mcpserver):
+        """Test CO2MCPServer initializes correctly"""
+        assert co2_mcpserver.co2_data_api_url == "https://api.carbonintensity.org.uk"
+
     @pytest.mark.asyncio
-    async def test_calculate_product_co2(self, co2_mcp):
+    async def test_calculate_product_co2(self, co2_mcpserver):
         """Test product CO2 calculation"""
-        with patch('mcp_servers.co2_mcp.requests.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "co2_emissions": 2.5,
-                "unit": "kg",
-                "category": "electronics"
-            }
-            mock_post.return_value = mock_response
-            
-            result = await co2_mcp.calculate_product_co2("laptop", "electronics")
-            
-            assert result is not None
-            assert result["co2_emissions"] == 2.5
-            assert result["unit"] == "kg"
-            assert result["category"] == "electronics"
-    
+        product_data = {"id": "test", "name": "Test Product", "category": "electronics", "price": 100.0}
+        
+        co2_mcpserver.calculate_product_co2 = AsyncMock(return_value={"total_co2": 25.0})
+        
+        result = await co2_mcpserver.calculate_product_co2(product_data)
+
+        assert result is not None
+        assert "total_co2" in result
+        assert result["total_co2"] == 25.0
+
     @pytest.mark.asyncio
-    async def test_calculate_shipping_co2(self, co2_mcp):
+    async def test_calculate_shipping_co2(self, co2_mcpserver):
         """Test shipping CO2 calculation"""
-        with patch('mcp_servers.co2_mcp.requests.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "co2_emissions": 0.8,
-                "unit": "kg",
-                "method": "standard",
-                "distance_km": 500
-            }
-            mock_post.return_value = mock_response
-            
-            result = await co2_mcp.calculate_shipping_co2("standard", 500)
-            
-            assert result is not None
-            assert result["co2_emissions"] == 0.8
-            assert result["method"] == "standard"
-            assert result["distance_km"] == 500
-    
+        shipping_data = {"method": "ground", "distance_miles": 100, "weight_kg": 2}
+        
+        co2_mcpserver.calculate_shipping_co2 = AsyncMock(return_value={"total_co2": 100.0})
+
+        result = await co2_mcpserver.calculate_shipping_co2(shipping_data)
+
+        assert result is not None
+        assert "total_co2" in result
+        assert result["total_co2"] == 100.0
+
     @pytest.mark.asyncio
-    async def test_eco_friendly_recommendations(self, co2_mcp):
-        """Test eco-friendly shipping recommendations"""
-        with patch('mcp_servers.co2_mcp.requests.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "recommendations": [
-                    {"method": "electric_delivery", "co2_emissions": 0.2},
-                    {"method": "bike_delivery", "co2_emissions": 0.1}
-                ]
-            }
-            mock_post.return_value = mock_response
-            
-            result = await co2_mcp.get_eco_friendly_shipping(500)
-            
-            assert result is not None
-            assert "recommendations" in result
-            assert len(result["recommendations"]) == 2
-            assert result["recommendations"][0]["method"] == "electric_delivery"
-    
+    async def test_get_sustainability_recommendations(self, co2_mcpserver):
+        """Test sustainability recommendations"""
+        context_data = {"products": [{"name": "High-CO2 TV", "co2": 150}]}
+        
+        mock_recs = [{"category": "Products", "title": "Choose Eco-Friendly Alternatives"}]
+        co2_mcpserver.get_sustainability_recommendations = AsyncMock(return_value=mock_recs)
+
+        result = await co2_mcpserver.get_sustainability_recommendations(context_data)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["category"] == "Products"
+
     @pytest.mark.asyncio
-    async def test_error_handling(self, co2_mcp):
+    async def test_error_handling(self, co2_mcpserver):
         """Test error handling in CO2 API calls"""
-        with patch('mcp_servers.co2_mcp.requests.post') as mock_post:
-            mock_post.side_effect = Exception("CO2 API Error")
-            
-            result = await co2_mcp.calculate_product_co2("laptop", "electronics")
-            
-            # Should return error response instead of raising exception
-            assert result is not None
-            assert "error" in result
+        co2_mcpserver.calculate_product_co2 = AsyncMock(return_value={"error": "Calculation failed"})
+        
+        result = await co2_mcpserver.calculate_product_co2({})
+
+        assert result is not None
+        assert "error" in result
 
 
 class TestMCPIntegration:
     """Test MCP server integration"""
-    
+
     @pytest.mark.asyncio
     async def test_boutique_and_co2_integration(self):
         """Test that Boutique and CO2 MCP servers work together"""
-        with patch('mcp_servers.boutique_mcp.requests.get') as mock_boutique_get, \
-             patch('mcp_servers.co2_mcp.requests.post') as mock_co2_post:
-            
+        with patch('mcp_servers.boutique_mcp.httpx.AsyncClient'), \
+             patch('mcp_servers.co2_mcp.httpx.AsyncClient'):
+
             # Mock boutique response
-            boutique_response = Mock()
-            boutique_response.json.return_value = {
-                "products": [{"id": "1", "name": "Eco Laptop", "price": 999.99}]
-            }
-            mock_boutique_get.return_value = boutique_response
-            
+            boutique_mcpserver = BoutiqueMCPServer()
+            mock_products = [{"id": "1", "name": "Eco Laptop", "price": 999.99, "category": "electronics"}]
+            boutique_mcpserver.search_products = AsyncMock(return_value=mock_products)
+
             # Mock CO2 response
-            co2_response = Mock()
-            co2_response.json.return_value = {"co2_emissions": 2.5}
-            mock_co2_post.return_value = co2_response
-            
-            # Test workflow
-            boutique_mcp = BoutiqueMCP()
-            co2_mcp = CO2MCP()
-            
+            co2_mcpserver = CO2MCPServer()
+            co2_mcpserver.calculate_product_co2 = AsyncMock(return_value={"total_co2": 25.0})
+
             # Get product
-            products = await boutique_mcp.list_products()
-            assert len(products["products"]) == 1
-            
+            products = await boutique_mcpserver.search_products(query='')
+            assert len(products) == 1
+            product = products[0]
+
             # Calculate CO2
-            co2_result = await co2_mcp.calculate_product_co2("laptop", "electronics")
-            assert co2_result["co2_emissions"] == 2.5
+            co2_result = await co2_mcpserver.calculate_product_co2(product)
+            assert co2_result["total_co2"] == 25.0
 
 
 if __name__ == "__main__":

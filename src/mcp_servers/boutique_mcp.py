@@ -92,7 +92,8 @@ class BoutiqueMCPServer:
 
         logger.info("Boutique MCP Server initialized", base_url=boutique_base_url)
 
-    def retry_with_breaker(self, service_name: str, fallback_method: str):
+    @staticmethod
+    def retry_with_breaker(service_name: str, fallback_method: str):
         def decorator(func):
             @functools.wraps(func)
             async def wrapper(self, *args, **kwargs):
