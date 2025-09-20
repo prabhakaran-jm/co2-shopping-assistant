@@ -203,21 +203,35 @@ Provide clear, helpful responses and explain the environmental benefits of your 
         Generate text using Gemini if available. Returns None if LLM unavailable.
         """
         if genai is None:
+            logger.error("LLM text generation failed: Gemini client not available.")
             return None
+        
         api_key = os.getenv("GOOGLE_AI_API_KEY")
         if not api_key:
+            logger.error("LLM text generation failed: GOOGLE_AI_API_KEY not set.")
             return None
+        
         try:
             selected_model = model or self.model or "gemini-2.0-flash"
+            logger.info("Generating text with LLM", model=selected_model, agent=self.name)
+            
             llm = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
+            
             # Call in thread to avoid blocking event loop (SDK is sync)
             response = await asyncio.to_thread(llm.generate_content, user_input)
+            
             text = getattr(response, "text", None)
+            logger.info("LLM raw response", response=text)
+            
             if isinstance(text, str) and text.strip():
                 return text.strip()
-        except Exception:
+            else:
+                logger.warning("LLM response was empty or invalid.", agent=self.name)
+                return None
+                
+        except Exception as e:
+            logger.error("LLM text generation failed", error=str(e), agent=self.name)
             return None
-        return None
 
     def _update_metrics(self, success: bool, response_time: float):
         """

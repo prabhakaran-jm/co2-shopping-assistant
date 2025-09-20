@@ -91,38 +91,31 @@ Always help users understand their environmental impact and guide them toward mo
     async def process_message(self, message: str, session_id: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Process CO2 calculation and environmental analysis requests.
-        
-        Args:
-            message: User's message/query
-            session_id: Session identifier
-            context: Additional context including product information
-            
-        Returns:
-            Dictionary containing the response
         """
         start_time = asyncio.get_event_loop().time()
         
         try:
             logger.info("Processing CO2 calculation request", message=message, session_id=session_id, context=context)
             
-            # Extract product context if available
-            product_context = None
-            if context:
-                product_context = context.get("current_product_context", {})
-                if product_context:
-                    logger.info("Using product context for CO2 calculation", product=product_context.get("name"))
+            # Extract product and cart context if available
+            product_context = context.get("current_product_context", {}) if context else {}
+            cart_context = context.get("cart_context", {}) if context else {}
+            full_context = {**product_context, **cart_context}
+
+            if full_context:
+                logger.info("Using context for CO2 calculation", context=full_context)
             
             # Parse the request type
-            request_type = await self._parse_co2_request_type(message, product_context)
+            request_type = await self._parse_co2_request_type(message, full_context)
             
             if request_type == "calculate":
-                response = await self._handle_co2_calculation(message, session_id, product_context)
+                response = await self._handle_co2_calculation(message, session_id, full_context)
             elif request_type == "compare":
-                response = await self._handle_co2_comparison(message, session_id, product_context)
+                response = await self._handle_co2_comparison(message, session_id, full_context)
             elif request_type == "analyze":
-                response = await self._handle_environmental_analysis(message, session_id)
+                response = await self._handle_environmental_analysis(message, session_id, full_context)
             elif request_type == "suggest":
-                response = await self._handle_sustainability_suggestions(message, session_id)
+                response = await self._handle_sustainability_suggestions(message, session_id, full_context)
             else:
                 response = await self._handle_general_co2_inquiry(message, session_id)
             
@@ -138,138 +131,143 @@ Always help users understand their environmental impact and guide them toward mo
             }
             
         except Exception as e:
-            logger.error("CO2 calculation processing failed", error=str(e), session_id=session_id)
+            logger.error("CO2 calculation processing failed", error=str(e), session_id=session_id, exc_info=True)
             response_time = asyncio.get_event_loop().time() - start_time
             self._update_metrics(success=False, response_time=response_time)
             
             return {
-                "response": "I apologize, but I encountered an error while calculating CO2 emissions. Please try again.",
+                "response": "I apologize, but I encountered an error. Please try again.",
                 "error": str(e),
                 "agent": self.name
             }
     
     async def _parse_co2_request_type(self, message: str, product_context: Dict[str, Any] = None) -> str:
-        """Parse the type of CO2-related request."""
+        """Parse the type of CO2-related request with improved accuracy."""
         message_lower = message.lower()
         
-        # If we have product context and this seems like a follow-up, prioritize specific analysis
-        if product_context and any(word in message_lower for word in ["this", "that", "it", "the product", "the item"]):
-            if any(word in message_lower for word in ["co2", "carbon", "emission", "environmental", "impact"]):
-                return "analyze"
-            elif any(word in message_lower for word in ["add", "cart", "buy", "purchase"]):
-                return "calculate"
-        
-        if any(word in message_lower for word in ["calculate", "co2", "emission", "carbon", "footprint"]):
-            return "calculate"
+        # More specific keywords first to avoid misclassification
+        if any(word in message_lower for word in ["suggest", "recommend", "alternative", "eco", "green", "tips"]):
+            logger.info("Parsed request type as 'suggest'")
+            return "suggest"
         elif any(word in message_lower for word in ["compare", "vs", "versus", "difference", "better"]):
+            logger.info("Parsed request type as 'compare'")
             return "compare"
         elif any(word in message_lower for word in ["analyze", "impact", "environmental", "sustainability"]):
+            logger.info("Parsed request type as 'analyze'")
             return "analyze"
-        elif any(word in message_lower for word in ["suggest", "recommend", "alternative", "eco", "green"]):
-            return "suggest"
-        else:
-            return "general"
+        elif any(word in message_lower for word in ["calculate", "co2", "emission", "carbon", "footprint"]):
+            logger.info("Parsed request type as 'calculate'")
+            return "calculate"
+        
+        # Context-based parsing as a fallback
+        if product_context and any(word in message_lower for word in ["this", "that", "it", "the product", "the item"]):
+            if any(word in message_lower for word in ["co2", "carbon", "emission", "environmental", "impact"]):
+                logger.info("Parsed request type as 'analyze' from context")
+                return "analyze"
+            elif any(word in message_lower for word in ["add", "cart", "buy", "purchase"]):
+                logger.info("Parsed request type as 'calculate' from context")
+                return "calculate"
+        
+        logger.info("Parsed request type as 'general'")
+        return "general"
     
     async def _handle_co2_calculation(self, message: str, session_id: str, product_context: Dict[str, Any] = None) -> str:
-        """Handle CO2 calculation requests."""
+        """Handle CO2 calculation requests, delegating to general inquiry if no parameters are found."""
         try:
-            # Extract calculation parameters
             calc_params = await self._extract_calculation_parameters(message, product_context)
             
-            if not calc_params:
-                return "I need more information to calculate CO2 emissions. Please specify the product, shipping method, or what you'd like me to calculate."
-            
-            # Perform CO2 calculation
+            # Check if any calculation-specific parameters were found.
+            # If not, it's likely a general question that was mis-routed.
+            is_general_query = not any([
+                calc_params.get("product_name"),
+                calc_params.get("product_type"),
+                calc_params.get("price"),
+                calc_params.get("shipping_method"),
+                calc_params.get("shipping_distance"),
+            ])
+
+            if is_general_query:
+                logger.info("No calculation parameters found, delegating to general inquiry.")
+                return await self._handle_general_co2_inquiry(message, session_id)
+
             co2_data = await self._calculate_co2_emissions(calc_params)
             
-            # Format response
-            response = self._format_co2_calculation_response(co2_data, calc_params)
+            response = await self._format_co2_calculation_response(co2_data, calc_params)
             
             return response
             
         except Exception as e:
-            logger.error("CO2 calculation failed", error=str(e))
+            logger.error("CO2 calculation failed", error=str(e), exc_info=True)
             return "I encountered an error while calculating CO2 emissions. Please try again with more specific details."
     
-    async def _handle_co2_comparison(self, message: str, session_id: str, product_context: Dict[str, Any] = None) -> str:
+    async def _handle_co2_comparison(self, message: str, session_id: str, context: Dict[str, Any] = None) -> str:
         """Handle CO2 comparison requests."""
         try:
-            # Extract comparison parameters
-            comparison_params = await self._extract_comparison_parameters(message)
+            logger.info("Handling CO2 comparison", context=context)
+            comparison_params = await self._extract_comparison_parameters(message, context)
             
             if len(comparison_params.get("items", [])) < 2:
-                return "I need at least 2 items to compare their CO2 emissions. Please specify which products or options you'd like to compare."
-            
-            # Calculate CO2 for each item
+                return "I need at least 2 items to compare. Please specify them."
+
             comparison_results = []
             for item in comparison_params["items"]:
                 co2_data = await self._calculate_co2_emissions(item)
-                comparison_results.append({
-                    "item": item,
-                    "co2_data": co2_data
-                })
+                comparison_results.append({"item": item, "co2_data": co2_data})
             
-            # Format comparison response
-            response = self._format_co2_comparison_response(comparison_results)
-            
-            return response
-            
+            return await self._format_co2_comparison_response(comparison_results)
+
         except Exception as e:
-            logger.error("CO2 comparison failed", error=str(e))
-            return "I encountered an error while comparing CO2 emissions. Please try again."
-    
-    async def _handle_environmental_analysis(self, message: str, session_id: str) -> str:
+            logger.error("CO2 comparison failed", error=str(e), exc_info=True)
+            return "I encountered an error while comparing CO2 emissions."
+
+    async def _handle_environmental_analysis(self, message: str, session_id: str, context: Dict[str, Any] = None) -> str:
         """Handle environmental analysis requests."""
         try:
-            # Extract analysis parameters
-            analysis_params = await self._extract_analysis_parameters(message)
-            
-            # Perform environmental analysis
+            logger.info("Handling environmental analysis", context=context)
+            analysis_params = await self._extract_analysis_parameters(message, context)
             analysis_results = await self._perform_environmental_analysis(analysis_params)
-            
-            # Format analysis response
-            response = self._format_environmental_analysis_response(analysis_results)
-            
-            return response
-            
+            return await self._format_environmental_analysis_response(analysis_results)
+
         except Exception as e:
-            logger.error("Environmental analysis failed", error=str(e))
-            return "I encountered an error while performing environmental analysis. Please try again."
-    
-    async def _handle_sustainability_suggestions(self, message: str, session_id: str) -> str:
+            logger.error("Environmental analysis failed", error=str(e), exc_info=True)
+            return "I encountered an error during the environmental analysis."
+
+    async def _handle_sustainability_suggestions(self, message: str, session_id: str, context: Dict[str, Any] = None) -> str:
         """Handle sustainability suggestion requests."""
         try:
-            # Extract suggestion parameters
-            suggestion_params = await self._extract_suggestion_parameters(message)
-            
-            # Generate sustainability suggestions
+            logger.info("Handling sustainability suggestions", context=context)
+            suggestion_params = await self._extract_suggestion_parameters(message, context)
             suggestions = await self._generate_sustainability_suggestions(suggestion_params)
-            
-            # Format suggestions response
-            response = self._format_sustainability_suggestions_response(suggestions)
-            
-            return response
-            
+            return await self._format_sustainability_suggestions_response(suggestions)
+
         except Exception as e:
-            logger.error("Sustainability suggestions failed", error=str(e))
-            return "I encountered an error while generating sustainability suggestions. Please try again."
+            logger.error("Sustainability suggestions failed", error=str(e), exc_info=True)
+            return "I encountered an error while generating sustainability suggestions."
     
     async def _handle_general_co2_inquiry(self, message: str, session_id: str) -> str:
-        """Handle general CO2-related inquiries."""
-        return """🌱 I'm your CO2 Calculator Agent, here to help you understand and reduce your environmental impact!
+        """Handle general CO2-related inquiries using Gemini AI."""
+        try:
+            prompt = f"""
+            Act as a friendly and knowledgeable CO2 Calculator Agent.
+            The user asked: '{message}'.
+            
+            Provide a conversational, informative, and engaging response that:
+            - Explains your purpose (CO2 calculation, environmental analysis)
+            - Highlights your key capabilities (calculations, comparisons, suggestions)
+            - Includes a fun or interesting CO2/sustainability fact.
+            - Encourages the user to ask a more specific question.
+            """
+            
+            ai_response = await self._llm_generate_text(self.instruction, prompt)
+            
+            if not ai_response:
+                raise ValueError("AI response was empty")
 
-I can help you with:
-- **CO2 Calculations**: "What's the carbon footprint of this laptop?"
-- **Environmental Comparisons**: "Compare the CO2 emissions of ground vs air shipping"
-- **Impact Analysis**: "Analyze the environmental impact of my shopping cart"
-- **Sustainability Tips**: "Suggest ways to reduce my carbon footprint"
+            return ai_response
 
-**Quick CO2 Facts**:
-- Manufacturing typically accounts for 60-80% of a product's total CO2 emissions
-- Shipping adds 5-15% depending on distance and method
-- Eco-friendly packaging can reduce emissions by 60-80%
-
-What would you like to calculate or analyze? I'll provide detailed CO2 breakdowns and suggest eco-friendly alternatives! 🌍"""
+        except Exception as e:
+            logger.error("AI-powered general inquiry failed", error=str(e))
+            return "I'm sorry, but I encountered an error while processing your request. Please try again."
     
     async def _extract_calculation_parameters(self, message: str, product_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Extract parameters for CO2 calculation."""
@@ -392,52 +390,50 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
         
         return None
     
-    async def _extract_comparison_parameters(self, message: str) -> Dict[str, Any]:
+    async def _extract_comparison_parameters(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Extract parameters for CO2 comparison."""
+        # This is a placeholder for a more sophisticated NLP-based extraction
+        # For now, it demonstrates using context if available
+        if context and "items_to_compare" in context:
+            return {"items": context["items_to_compare"]}
+
         params = {
             "items": [],
             "comparison_criteria": ["total_co2", "manufacturing", "shipping"]
         }
         
-        # Simplified extraction - in real implementation would use NLP
-        # Look for product mentions or shipping methods
         if "ground" in message.lower() and "air" in message.lower():
             params["items"] = [
                 {"shipping_method": "ground", "shipping_distance": 500},
                 {"shipping_method": "air", "shipping_distance": 500}
             ]
-        elif "express" in message.lower() and "standard" in message.lower():
-            params["items"] = [
-                {"shipping_method": "air", "shipping_distance": 500},
-                {"shipping_method": "ground", "shipping_distance": 500}
-            ]
-        
         return params
-    
-    async def _extract_analysis_parameters(self, message: str) -> Dict[str, Any]:
+
+    async def _extract_analysis_parameters(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Extract parameters for environmental analysis."""
         params = {
             "analysis_type": "general",
             "scope": "product",
-            "include_recommendations": True
+            "include_recommendations": True,
+            "context": context or {}
         }
         
-        if "cart" in message.lower():
+        if "cart" in message.lower() or (context and "cart_items" in context):
             params["scope"] = "cart"
         elif "order" in message.lower():
             params["scope"] = "order"
         
         return params
-    
-    async def _extract_suggestion_parameters(self, message: str) -> Dict[str, Any]:
+
+    async def _extract_suggestion_parameters(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Extract parameters for sustainability suggestions."""
         params = {
             "suggestion_type": "general",
             "focus_area": None,
-            "budget_constraint": None
+            "budget_constraint": None,
+            "context": context or {}
         }
         
-        # Extract focus area
         focus_areas = ["shipping", "packaging", "products", "lifestyle"]
         for area in focus_areas:
             if area in message.lower():
@@ -578,159 +574,147 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
         return co2_data
     
     async def _perform_environmental_analysis(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform environmental analysis."""
-        analysis = {
+        """Perform environmental analysis using Gemini AI."""
+        try:
+            prompt = f"""
+            Analyze the environmental impact based on these parameters: {json.dumps(params)}.
+            Provide a JSON response with:
+            - 'overall_impact': (e.g., 'Low', 'Medium', 'High')
+            - 'key_factors': (a list of strings)
+            - 'recommendations': (a list of actionable strings)
+            - 'sustainability_score': (a float between 0 and 10)
+            - 'improvement_potential': (e.g., 'Low', 'Medium', 'High')
+            """
+            
+            ai_response = await self._llm_generate_text(self.instruction, prompt)
+            
+            if not ai_response:
+                raise ValueError("AI response was empty")
+
+            cleaned_json = ai_response.strip().replace('`', '').replace('json', '')
+            analysis = json.loads(cleaned_json)
+            return analysis
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(
+                "AI environmental analysis parsing failed", 
+                error=str(e), 
+                ai_response=ai_response
+            )
+        except Exception as e:
+            logger.error("AI-powered environmental analysis failed", error=str(e))
+
+        # Fallback to a default response with an error message
+        return {
+            "error": "Failed to perform environmental analysis.",
             "overall_impact": "Unknown",
             "key_factors": [],
             "recommendations": [],
             "sustainability_score": 0,
             "improvement_potential": "Unknown"
         }
-        
-        # Mock analysis based on parameters
-        if params["scope"] == "cart":
-            analysis["overall_impact"] = "Medium"
-            analysis["key_factors"] = [
-                "High-impact electronics in cart",
-                "Standard shipping methods",
-                "Mixed packaging types"
-            ]
-            analysis["recommendations"] = [
-                "Consider eco-friendly alternatives for electronics",
-                "Choose ground shipping over air",
-                "Select minimal packaging options"
-            ]
-            analysis["sustainability_score"] = 6.5
-            analysis["improvement_potential"] = "High"
-        
-        return analysis
     
     async def _generate_sustainability_suggestions(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate sustainability suggestions."""
-        suggestions = []
-        
-        if params["focus_area"] == "shipping":
-            suggestions = [
-                {
-                    "category": "Shipping",
-                    "suggestion": "Choose ground shipping over air freight",
-                    "co2_reduction": "60-80%",
-                    "impact": "High"
-                },
-                {
-                    "category": "Shipping",
-                    "suggestion": "Consolidate orders to reduce shipping frequency",
-                    "co2_reduction": "30-50%",
-                    "impact": "Medium"
-                }
-            ]
-        elif params["focus_area"] == "packaging":
-            suggestions = [
-                {
-                    "category": "Packaging",
-                    "suggestion": "Select minimal packaging options",
-                    "co2_reduction": "70-90%",
-                    "impact": "High"
-                },
-                {
-                    "category": "Packaging",
-                    "suggestion": "Choose eco-friendly packaging materials",
-                    "co2_reduction": "40-60%",
-                    "impact": "Medium"
-                }
-            ]
-        else:
-            suggestions = [
-                {
-                    "category": "General",
-                    "suggestion": "Choose products with eco-certifications",
-                    "co2_reduction": "20-40%",
-                    "impact": "Medium"
-                },
-                {
-                    "category": "General",
-                    "suggestion": "Support local manufacturers when possible",
-                    "co2_reduction": "15-30%",
-                    "impact": "Medium"
-                }
-            ]
-        
-        return suggestions
-    
-    def _format_co2_calculation_response(self, co2_data: Dict[str, Any], params: Dict[str, Any]) -> str:
-        """Format CO2 calculation response."""
-        response = f"🌍 **CO2 Emission Calculation**\n\n"
-        
-        # Show product name if available
-        if co2_data.get("product_name"):
-            response += f"**Product**: {co2_data['product_name'].title()}\n"
-        
-        response += f"**Total CO2 Emissions**: {co2_data['total_co2']:.1f} kg CO2 ({co2_data['rating']} Impact)\n\n"
-        
-        response += "📊 **Breakdown by Source**:\n"
-        for source, data in co2_data["breakdown"].items():
-            response += f"• **{source.title()}**: {data['co2']:.1f} kg CO2 ({data['percentage']:.1f}%)\n"
-        
-        response += f"\n🌱 **Environmental Context**:\n"
-        response += f"• Equivalent to driving {co2_data['equivalent']['miles_driven']:.1f} miles\n"
-        response += f"• Would need {co2_data['equivalent']['trees_needed']:.1f} trees to offset\n"
-        response += f"• Equal to {co2_data['equivalent']['days_electricity']:.1f} days of home electricity\n\n"
-        
-        if co2_data["rating"] in ["High", "Very High"]:
-            response += "💡 **Reduction Tips**:\n"
-            response += "• Consider eco-friendly alternatives\n"
-            response += "• Choose ground shipping over air\n"
-            response += "• Select minimal packaging options\n"
-        
-        return response
-    
-    def _format_co2_comparison_response(self, comparison_results: List[Dict[str, Any]]) -> str:
-        """Format CO2 comparison response."""
-        response = "🔄 **CO2 Emission Comparison**\n\n"
-        
-        for i, result in enumerate(comparison_results, 1):
-            item = result["item"]
-            co2_data = result["co2_data"]
+        """Generate sustainability suggestions using Gemini AI."""
+        ai_response = None
+        try:
+            prompt = f"""
+            Generate sustainability suggestions based on these parameters: {json.dumps(params)}.
+            Provide a JSON response as a list of dictionaries, each with:
+            - 'category': (e.g., 'Shipping', 'Packaging', 'General')
+            - 'suggestion': (a specific, actionable suggestion)
+            - 'co2_reduction': (estimated percentage or range)
+            - 'impact': (e.g., 'Low', 'Medium', 'High')
+            """
             
-            response += f"**Option {i}**: {item.get('shipping_method', 'Unknown')} Shipping\n"
-            response += f"• Total CO2: {co2_data['total_co2']:.1f} kg\n"
-            response += f"• Rating: {co2_data['rating']}\n\n"
-        
-        # Find the most eco-friendly option
-        best_option = min(comparison_results, key=lambda r: r["co2_data"]["total_co2"])
-        best_index = comparison_results.index(best_option) + 1
-        
-        response += f"🏆 **Most Eco-Friendly**: Option {best_index} with {best_option['co2_data']['total_co2']:.1f} kg CO2 emissions!"
-        
-        return response
+            ai_response = await self._llm_generate_text(self.instruction, prompt)
+            
+            if not ai_response:
+                raise ValueError("AI response was empty")
+
+            cleaned_json = ai_response.strip().replace('`', '').replace('json', '')
+            suggestions = json.loads(cleaned_json)
+            return suggestions
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(
+                "AI sustainability suggestions parsing failed",
+                error=str(e),
+                ai_response=ai_response
+            )
+        except Exception as e:
+            logger.error("AI-powered sustainability suggestions failed", error=str(e))
+
+        # Fallback to an empty list with an error message
+        return [
+            {
+                "error": "Failed to generate sustainability suggestions.",
+                "category": "Error",
+                "suggestion": "Could not generate suggestions at this time.",
+                "co2_reduction": "N/A",
+                "impact": "Unknown"
+            }
+        ]
     
-    def _format_environmental_analysis_response(self, analysis: Dict[str, Any]) -> str:
+
+    
+    async def _format_co2_comparison_response(self, comparison_results: List[Dict[str, Any]]) -> str:
+        """Format CO2 comparison response with AI-powered insights."""
+        ai_response = None
+        try:
+            prompt = f"""
+            Generate a user-friendly comparison of these options: {json.dumps(comparison_results)}.
+            
+            Your response should be a markdown-formatted string that:
+            - Declares a clear winner and explains why.
+            - Provides a concise summary of each option's CO2 impact.
+            - Offers a concluding recommendation.
+            """
+            
+            ai_response = await self._llm_generate_text(self.instruction, prompt)
+            
+            if not ai_response:
+                raise ValueError("AI response was empty")
+
+            return f"🔄 **CO2 Emission Comparison**\n\n{ai_response}"
+
+        except Exception as e:
+            logger.error(
+                "AI-powered comparison formatting failed",
+                error=str(e),
+                ai_response=ai_response
+            )
+            return "I'm sorry, but I encountered an error while processing your request. Please try again."
+    
+    async def _format_environmental_analysis_response(self, analysis: Dict[str, Any]) -> str:
         """Format environmental analysis response."""
         response = f"📈 **Environmental Analysis**\n\n"
-        response += f"**Overall Impact**: {analysis['overall_impact']}\n"
-        response += f"**Sustainability Score**: {analysis['sustainability_score']}/10\n"
-        response += f"**Improvement Potential**: {analysis['improvement_potential']}\n\n"
+        response += f"**Overall Impact**: {analysis.get('overall_impact', 'N/A')}\n"
+        response += f"**Sustainability Score**: {analysis.get('sustainability_score', 'N/A')}/10\n\n"
         
-        response += "🔍 **Key Environmental Factors**:\n"
-        for factor in analysis["key_factors"]:
+        response += "🔍 **Key Factors**:\n"
+        for factor in analysis.get("key_factors", []):
             response += f"• {factor}\n"
         
         response += "\n💡 **Recommendations**:\n"
-        for rec in analysis["recommendations"]:
+        for rec in analysis.get("recommendations", []):
             response += f"• {rec}\n"
         
         return response
     
-    def _format_sustainability_suggestions_response(self, suggestions: List[Dict[str, Any]]) -> str:
+    async def _format_sustainability_suggestions_response(self, suggestions: List[Dict[str, Any]]) -> str:
         """Format sustainability suggestions response."""
         response = "🌱 **Sustainability Suggestions**\n\n"
         
+        if not suggestions:
+            return response + "I couldn't generate specific suggestions right now, but choosing eco-friendly options is always a great start!"
+
         for suggestion in suggestions:
-            response += f"**{suggestion['category']}**: {suggestion['suggestion']}\n"
-            response += f"• CO2 Reduction: {suggestion['co2_reduction']}\n"
-            response += f"• Impact: {suggestion['impact']}\n\n"
+            response += f"**{suggestion.get('category', 'General')}**: {suggestion.get('suggestion', 'N/A')}\n"
+            response += f"• CO2 Reduction: {suggestion.get('co2_reduction', 'N/A')}\n"
+            response += f"• Impact: {suggestion.get('impact', 'N/A')}\n\n"
         
-        response += "💡 These suggestions can help you reduce your environmental impact while shopping!"
+        response += "💡 Implementing these suggestions can significantly reduce your carbon footprint!"
         
         return response
     
@@ -774,66 +758,44 @@ What would you like to calculate or analyze? I'll provide detailed CO2 breakdown
             "best_option": min(comparison_results, key=lambda r: r["co2_data"]["total_co2"])
         }
     
-    def _format_co2_calculation_response(self, co2_data: Dict[str, Any], calc_params: Dict[str, Any]) -> str:
-        """Format CO2 calculation response with context awareness."""
-        product_name = calc_params.get("product_name", "this product")
-        
-        # Use product context if available
-        if calc_params.get("product_name"):
-            product_name = calc_params["product_name"]
-        
-        # Extract CO2 values
-        manufacturing_co2 = co2_data.get("manufacturing_co2", 0)
-        shipping_co2 = co2_data.get("shipping_co2", 0)
-        packaging_co2 = co2_data.get("packaging_co2", 0)
-        total_co2 = co2_data.get("total_co2", 0)
-        
-        # Determine impact level
-        if total_co2 <= 50:
-            impact_level = "Low Impact"
-            impact_emoji = "🌱"
-        elif total_co2 <= 150:
-            impact_level = "Medium Impact"
-            impact_emoji = "⚠️"
-        else:
-            impact_level = "High Impact"
-            impact_emoji = "🔴"
-        
-        # Build context-aware response
-        response_parts = [
-            f"🌍 **CO2 Impact Analysis for {product_name}**",
-            f"",
-            f"{impact_emoji} **Total CO2 Emissions: {total_co2:.1f} kg** ({impact_level})",
-            f"",
-            f"📊 **Breakdown:**",
-            f"• Manufacturing: {manufacturing_co2:.1f} kg CO2",
-            f"• Shipping: {shipping_co2:.1f} kg CO2",
-            f"• Packaging: {packaging_co2:.1f} kg CO2",
-            f""
-        ]
-        
-        # Add context-aware recommendations
-        if calc_params.get("product_name"):
-            response_parts.extend([
-                f"💡 **Context-Aware Recommendations:**",
-                f"• This {product_name.lower()} has a {impact_level.lower()} carbon footprint",
-            ])
+    async def _format_co2_calculation_response(self, co2_data: Dict[str, Any], calc_params: Dict[str, Any]) -> str:
+        """Format CO2 calculation response with contextual analysis from Gemini AI."""
+        ai_response = None
+        try:
+            prompt = f"""
+            Generate a user-friendly, contextual analysis of this CO2 calculation:
+            - Product: {calc_params.get('product_name', 'N/A')}
+            - Total CO2: {co2_data['total_co2']:.1f} kg
+            - Rating: {co2_data['rating']}
+            - Breakdown: {json.dumps(co2_data['breakdown'])}
             
-            if total_co2 > 100:
-                response_parts.append(f"• Consider eco-friendly alternatives for {product_name.lower()}")
-            else:
-                response_parts.append(f"• This {product_name.lower()} is relatively eco-friendly!")
-        
-        # Add sustainability tips
-        response_parts.extend([
-            f"",
-            f"🌿 **Sustainability Tips:**",
-            f"• Choose ground shipping to reduce CO2 by 60-80%",
-            f"• Look for products with eco-friendly packaging",
-            f"• Consider buying used or refurbished items"
-        ])
-        
-        return "\n".join(response_parts)
+            Your response should be a markdown-formatted string that:
+            - Provides a clear, engaging summary of the CO2 impact.
+            - Explains the breakdown in simple terms.
+            - Offers personalized, actionable sustainability tips.
+            - Includes an interesting environmental fact or comparison.
+            """
+            
+            ai_response = await self._llm_generate_text(self.instruction, prompt)
+            
+            if not ai_response:
+                raise ValueError("AI response was empty")
+
+            # Combine with hardcoded data for a complete response
+            response = f"🌍 **CO2 Emission Analysis**\n\n"
+            response += f"**Product**: {calc_params.get('product_name', 'N/A').title()}\n"
+            response += f"**Total CO2 Emissions**: {co2_data['total_co2']:.1f} kg CO2 ({co2_data['rating']} Impact)\n\n"
+            response += f"{ai_response}"
+            
+            return response
+
+        except Exception as e:
+            logger.error(
+                "AI-powered response formatting failed", 
+                error=str(e), 
+                ai_response=ai_response
+            )
+            return "I'm sorry, but I encountered an error while processing your request. Please try again."
     
     async def _execute_environmental_analysis_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute environmental analysis task."""
