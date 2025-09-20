@@ -591,17 +591,19 @@ What would you like to explore? I'll make sure to highlight the environmental be
 
     async def _should_use_intelligent_fallback(self, search_params: Dict[str, Any], products: List[Dict]) -> bool:
         """Determine if we should use intelligent fallback instead of MCP results."""
+        query = search_params.get("query", "").lower().strip()
+        show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", ""]
+        if query in show_all_commands:
+            return False
+
         if not products:
             return True
-
-        query = search_params.get("query", "").lower()
 
         # Extract meaningful search terms (remove stop words)
         stop_words = {"find", "search", "show", "get", "me", "for", "a", "the", "is", "are", "of"}
         query_words = [word for word in query.split() if word and word not in stop_words]
 
         # If the query consists only of "show all"-type words, don't use fallback.
-        # This correctly handles "show all products", "products", "all products", "list all", etc.
         relevance_check_words = [w for w in query_words if w not in ["all", "products", "list"]]
 
         if not relevance_check_words:
@@ -615,27 +617,24 @@ What would you like to explore? I'll make sure to highlight the environmental be
         }
 
         # If user is searching for non-existent categories, use intelligent fallback
-        # Use the original query_words for this check to catch "electronics" etc.
         for query_word in query_words:
             if query_word in non_existent_categories:
                 return True
 
         # Check if the returned products are actually relevant to the search
-        # If none of the query words appear in any product name, it's probably irrelevant
         relevant_products = []
         for product in products:
             product_name_lower = product.get("name", "").lower()
             product_desc_lower = product.get("description", "").lower()
 
-            # Use the filtered relevance_check_words for this.
             for query_word in relevance_check_words:
                 if query_word in product_name_lower or query_word in product_desc_lower:
                     relevant_products.append(product)
                     break
 
-        # If less than 50% of products are relevant, use intelligent fallback
+        # If less than 20% of products are relevant, use intelligent fallback
         relevance_ratio = len(relevant_products) / len(products) if products else 0
-        is_irrelevant = relevance_ratio < 0.5
+        is_irrelevant = relevance_ratio < 0.2
 
         return is_irrelevant
 

@@ -148,25 +148,98 @@ class BoutiqueMCPServer:
 
     @retry_with_breaker("product_catalog", "_fallback_search_products")
     async def search_products(self, query: str, category: Optional[str] = None, max_price: Optional[float] = None, min_price: Optional[float] = None, limit: int = 20) -> List[Dict[str, Any]]:
-        # ... (implementation from previous steps)
-        pass
+        logger.info("Searching for products", query=query, category=category, max_price=max_price, min_price=min_price)
+        try:
+            async with aio.insecure_channel(self.endpoints["product_catalog"]) as channel:
+                stub = pb2_grpc.ProductCatalogServiceStub(channel)
+                request = pb2.Empty()
+                response = await stub.ListProducts(request)
+                
+                products = []
+                for product_pb in response.products:
+                    products.append({
+                        "id": product_pb.id,
+                        "name": product_pb.name,
+                        "description": product_pb.description,
+                        "picture": product_pb.picture,
+                        "price": product_pb.price_usd.units + product_pb.price_usd.nanos / 1e9,
+                        "categories": list(product_pb.categories),
+                    })
+
+                # Client-side filtering
+                query_lower = query.lower().strip()
+                show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products", ""]
+                if query and query_lower not in show_all_commands:
+                    products = [p for p in products if query_lower in p['name'].lower() or query_lower in p['description'].lower()]
+                
+                if category:
+                    products = [p for p in products if category in p['categories']]
+
+                if min_price is not None:
+                    products = [p for p in products if p['price'] >= min_price]
+
+                if max_price is not None:
+                    products = [p for p in products if p['price'] <= max_price]
+
+                self._product_cache = products[:limit]
+                self._cache_last_updated = datetime.now()
+                
+                return self._product_cache
+        except Exception as e:
+            logger.error("Failed to search products via gRPC", error=str(e))
+            raise
 
     async def _fallback_search_products(self, *args, **kwargs) -> List[Dict[str, Any]]:
         logger.warning("Using cached product data as fallback for search_products.")
         if self._product_cache:
             return self._product_cache
-        return []
+        
+        # Return mock products if cache is empty
+        return [
+            {"id": "mock-1", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
+            {"id": "mock-2", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
+            {"id": "mock-3", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+        ]
 
     @retry_with_breaker("product_catalog", "_fallback_get_product_details")
     async def get_product_details(self, product_id: str) -> Optional[Dict[str, Any]]:
-        # ... (implementation from previous steps)
-        pass
+        logger.info("Getting product details", product_id=product_id)
+        try:
+            async with aio.insecure_channel(self.endpoints["product_catalog"]) as channel:
+                stub = pb2_grpc.ProductCatalogServiceStub(channel)
+                request = pb2.GetProductRequest(id=product_id)
+                product_pb = await stub.GetProduct(request)
+
+                if not product_pb or not product_pb.id:
+                    return None
+
+                return {
+                    "id": product_pb.id,
+                    "name": product_pb.name,
+                    "description": product_pb.description,
+                    "picture": product_pb.picture,
+                    "price": product_pb.price_usd.units + product_pb.price_usd.nanos / 1e9,
+                    "categories": list(product_pb.categories),
+                }
+        except Exception as e:
+            logger.error("Failed to get product details via gRPC", product_id=product_id, error=str(e))
+            raise
 
     async def _fallback_get_product_details(self, product_id: str, *args, **kwargs) -> Optional[Dict[str, Any]]:
         logger.warning(f"Using cached product data as fallback for get_product_details for product_id: {product_id}")
         for product in self._product_cache:
             if product.get("id") == product_id:
                 return product
+        
+        mock_products = [
+            {"id": "mock-1", "name": "Organic Cotton Shirt", "description": "A comfortable and sustainable shirt.", "price": 25.00, "categories": ["apparel"]},
+            {"id": "mock-2", "name": "Recycled Plastic Sunglasses", "description": "Stylish sunglasses made from recycled plastic.", "price": 40.00, "categories": ["accessories"]},
+            {"id": "mock-3", "name": "Solar-Powered Watch", "description": "A watch that never needs a battery change.", "price": 150.00, "categories": ["accessories"]},
+        ]
+        for product in mock_products:
+            if product.get("id") == product_id:
+                return product
+
         return None
 
     # ... (Apply decorator and add fallbacks for other service calls: get_product_categories, add_to_cart, etc.)
