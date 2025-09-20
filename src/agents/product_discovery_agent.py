@@ -152,6 +152,11 @@ Always explain why certain products are more environmentally friendly and help u
         if message_lower.startswith("show ") and len(words) > 1:
             return "search"
 
+        # Check for "show all" commands
+        show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products"]
+        if any(cmd in message_lower for cmd in show_all_commands):
+            return "search"
+
         if any(keyword in message_lower for keyword in recommend_keywords):
             return "recommend"
 
@@ -424,7 +429,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
         show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products"]
         if any(cmd in msg for cmd in show_all_commands):
             # Keep the original query for "show all" commands
-            pass
+            params["query"] = msg
         else:
             # Find the first product keyword in the message, but preserve original query for electronics
             electronics_terms = ["laptop", "computer", "phone", "camera", "electronics", "tech", "device"]
@@ -596,10 +601,10 @@ What would you like to explore? I'll make sure to highlight the environmental be
         query_words = [word for word in query.split() if word and word not in stop_words]
 
         # If the query consists only of "show all"-type words, don't use fallback.
-        # This correctly handles "show all products", "products", "all products", etc.
-        relevance_check_words = [w for w in query_words if w not in ["all", "products"]]
+        # This correctly handles "show all products", "products", "all products", "list all", etc.
+        relevance_check_words = [w for w in query_words if w not in ["all", "products", "list"]]
+
         if not relevance_check_words:
-            logger.info("Query is a 'show all' command, returning False (no intelligent fallback)")
             return False
 
         # Check for specific product categories that don't exist in Online Boutique
@@ -613,7 +618,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
         # Use the original query_words for this check to catch "electronics" etc.
         for query_word in query_words:
             if query_word in non_existent_categories:
-                logger.info(f"TRIGGERING INTELLIGENT FALLBACK FOR NON-EXISTENT CATEGORY: {query_word}")
                 return True
 
         # Check if the returned products are actually relevant to the search
@@ -632,9 +636,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
         # If less than 50% of products are relevant, use intelligent fallback
         relevance_ratio = len(relevant_products) / len(products) if products else 0
         is_irrelevant = relevance_ratio < 0.5
-
-        if is_irrelevant:
-            logger.warning(f"Results deemed irrelevant (ratio: {relevance_ratio:.2f}). Triggering fallback.")
 
         return is_irrelevant
 
@@ -924,8 +925,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
         # If the initial filtering yields no results, try a broader search 
         # that STILL respects the most important criterion: the category.
         if not filtered_products and search_params.get("category"):
-            print(f"⚠️ Initial filter found no results. Falling back to category-only search for '{search_params['category']}'.")
-            
             # Re-filter using only the category and eco-friendly flag.
             fallback_products = []
             for product in mock_products:
@@ -934,7 +933,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
                         continue # Still respect the eco_friendly filter
                     fallback_products.append(product)
             
-            print(f"✅ Fallback search found {len(fallback_products)} items in category.")
             return fallback_products
         # *** END OF THE FIX ***
 
@@ -945,7 +943,6 @@ What would you like to explore? I'll make sure to highlight the environmental be
         normalized = normalize_products(products)
         if not normalized:
             # Fallback: if normalization fails, return products with minimal processing
-            print(f"⚠️ normalize_products returned empty list. Using fallback normalization for {len(products)} products.")
             fallback_products = []
             for product in products:
                 fallback_product = {

@@ -184,8 +184,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         """
         message_lower = message.lower().strip()
         
-        # DEBUG: Print the message being analyzed
-        
         # Intent classification based on keywords and patterns
         intent = {
             "primary_agent": None,
@@ -286,6 +284,21 @@ Always provide helpful, environmentally conscious responses that guide users tow
         if await self._is_follow_up_question(message, last_agent_response):
             return await self._handle_follow_up_intent(message, last_agent_response, context)
         
+        # Explicitly route "show all" and "list all" commands to ProductDiscoveryAgent
+        # This is more reliable than the scoring system for these common, simple commands.
+        show_all_patterns = [
+            r"^list all$", r"^all products$", r"^show all products$",
+            r"^show products$", r"^products$", r"^list$", r"^show all$"
+        ]
+        for pattern in show_all_patterns:
+            if re.search(pattern, message_lower):
+                intent["primary_agent"] = "ProductDiscoveryAgent"
+                intent["intent_type"] = "product_search"
+                intent["confidence"] = 1.0
+                intent["parameters"] = {"query": message}
+                logger.info("Explicitly routing to ProductDiscoveryAgent for 'show all' command", query=message_lower)
+                return intent
+        
         # Product discovery patterns (expanded)
         product_keywords = [
             "find", "search", "look for", "show me", "show", "recommend", "suggest",
@@ -337,8 +350,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         checkout_score = sum(1 for keyword in checkout_keywords if keyword in message_lower)
         comparison_score = sum(1 for keyword in comparison_keywords if keyword in message_lower)
         
-        # DEBUG: Print keyword matching scores
-        
         # Prefer discovery for recommendation phrasing
         if ("recommend" in message_lower or "suggest" in message_lower):
             intent["primary_agent"] = "ProductDiscoveryAgent"
@@ -366,8 +377,6 @@ Always provide helpful, environmentally conscious responses that guide users tow
         
         primary_agent = max(scores, key=scores.get)
         max_score = scores[primary_agent]
-        
-        # DEBUG: Print routing decision
         
         if max_score > 0:
             intent["primary_agent"] = primary_agent
