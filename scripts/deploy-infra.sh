@@ -130,27 +130,19 @@ fi
 log_info "Setting Google Cloud project..."
 gcloud config set project "$PROJECT_ID"
 
-# Get cluster endpoint and configure kubectl
-log_info "Configuring kubectl for cluster..."
-gcloud container clusters get-credentials "$CLUSTER_NAME" --region="$REGION"
+# Initialize Terraform using appropriate backend configuration
+cd terraform
 
 # Determine backend configuration based on environment
 local backend_config="backend.hcl"
-if [[ -n "$ENVIRONMENT" && -f "envs/${ENVIRONMENT}.tfvars" ]]; then
-    # Check if environment-specific backend exists
-    if [[ -f "backend-${ENVIRONMENT}.hcl" ]]; then
-        backend_config="backend-${ENVIRONMENT}.hcl"
-        log_info "Using environment-specific backend: $backend_config"
-    else
-        log_info "Using default backend: $backend_config (environment-specific backend not found)"
-    fi
+if [[ -n "$ENVIRONMENT" && -f "envs/${ENVIRONMENT}.tfvars" && -f "backend-${ENVIRONMENT}.hcl" ]]; then
+    backend_config="backend-${ENVIRONMENT}.hcl"
+    log_info "Using environment-specific backend: $backend_config"
 else
     log_info "Using default backend: $backend_config"
 fi
 
-# Initialize Terraform using appropriate backend configuration
 log_info "Initializing Terraform with backend: $backend_config..."
-cd terraform
 terraform init -backend-config="$backend_config"
 
 # Plan Terraform deployment (with optional environment-specific variables)
@@ -166,6 +158,10 @@ fi
 # Apply Terraform deployment
 log_info "Applying Terraform deployment..."
 terraform apply tfplan
+
+# Get cluster endpoint and configure kubectl (after cluster is created)
+log_info "Configuring kubectl for cluster..."
+gcloud container clusters get-credentials "$CLUSTER_NAME" --region="$REGION"
 
 # Configure Docker authentication
 log_info "Configuring Docker authentication..."

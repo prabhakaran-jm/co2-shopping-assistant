@@ -5,6 +5,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 import sys
+from unittest.mock import patch
 import os
 
 # Add src to path for imports

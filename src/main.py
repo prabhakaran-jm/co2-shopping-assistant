@@ -8,7 +8,7 @@ a multi-agent system built with Google's Agent Development Kit (ADK).
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from typing import Dict, Any
 
 import uvicorn
@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import structlog
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
@@ -28,6 +28,10 @@ from .agents.checkout_agent import CheckoutAgent
 from .agents.comparison_agent import ComparisonAgent
 from .agents.adk_agent import ADKEcoAgent
 from .mcp_servers.boutique_mcp import BoutiqueMCPServer
+from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
+from .mcp_servers.co2_mcp_transport import CO2MCPTransport
+from .mcp_servers.comparison_mcp_transport import ComparisonMCPTransport
+from .mcp_servers.base_mcp_transport import BaseMCPTransport
 from .mcp_servers.co2_mcp import CO2MCPServer
 from .mcp_servers.comparison_mcp import ComparisonMCPServer
 from .a2a.protocol import A2AProtocol
@@ -79,10 +83,6 @@ async def lifespan(app: FastAPI):
         
         await mcp_servers["boutique"].start()
         await mcp_servers["co2"].start()
-        
-        # Initialize product cache for better performance
-        logger.info("Initializing product cache...")
-        await mcp_servers["boutique"].initialize_cache()
         
         # Initialize A2A Protocol first
         logger.info("Initializing A2A protocol...")
@@ -226,7 +226,6 @@ async def health_check():
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
-    from fastapi.responses import Response
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -324,6 +323,21 @@ async def adk_chat_endpoint(payload: Dict[str, Any], request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+async def get_mcp_transport(server_name: str) -> BaseMCPTransport:
+    """FastAPI dependency to get the correct MCP transport instance."""
+    if server_name not in mcp_servers:
+        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
+
+    if server_name == "boutique":
+        return BoutiqueMCPTransport()
+    elif server_name == "co2":
+        return CO2MCPTransport()
+    elif server_name == "comparison":
+        return ComparisonMCPTransport(boutique_mcp_server=mcp_servers["boutique"])
+    else:
+        raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
+
+
 # MCP Transport Endpoints
 @app.get("/api/mcp")
 async def mcp_info():
@@ -355,49 +369,22 @@ async def mcp_info():
 
 
 @app.get("/api/mcp/{server_name}/tools")
-async def list_mcp_tools(server_name: str):
+async def list_mcp_tools(server_name: str, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """List available tools for an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
         result = await mcp_transport._handle_tools_list({})
         return result
-        
     except Exception as e:
         logger.error("MCP tools list error", server=server_name, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/mcp/{server_name}/tools/{tool_name}")
-async def execute_mcp_tool(server_name: str, tool_name: str, request: Request):
+async def execute_mcp_tool(server_name: str, tool_name: str, request: Request, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """Execute a tool on an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
         body = await request.json()
-        
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
+
         params = {
             "name": tool_name,
             "arguments": body
@@ -411,47 +398,20 @@ async def execute_mcp_tool(server_name: str, tool_name: str, request: Request):
 
 
 @app.get("/api/mcp/{server_name}/resources")
-async def list_mcp_resources(server_name: str):
+async def list_mcp_resources(server_name: str, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """List available resources for an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
         result = await mcp_transport._handle_resources_list({})
         return result
-        
     except Exception as e:
         logger.error("MCP resources list error", server=server_name, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/mcp/{server_name}/resources/{resource_uri:path}")
-async def read_mcp_resource(server_name: str, resource_uri: str):
+async def read_mcp_resource(server_name: str, resource_uri: str, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """Read a resource from an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
         params = {"uri": resource_uri}
         result = await mcp_transport._handle_resources_read(params)
         return result
@@ -462,49 +422,22 @@ async def read_mcp_resource(server_name: str, resource_uri: str):
 
 
 @app.get("/api/mcp/{server_name}/prompts")
-async def list_mcp_prompts(server_name: str):
+async def list_mcp_prompts(server_name: str, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """List available prompts for an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
         result = await mcp_transport._handle_prompts_list({})
         return result
-        
     except Exception as e:
         logger.error("MCP prompts list error", server=server_name, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/mcp/{server_name}/prompts/{prompt_name}")
-async def render_mcp_prompt(server_name: str, prompt_name: str, request: Request):
+async def render_mcp_prompt(server_name: str, prompt_name: str, request: Request, mcp_transport: BaseMCPTransport = Depends(get_mcp_transport)):
     """Render a prompt template from an MCP server."""
-    if server_name not in mcp_servers:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found")
-    
     try:
         body = await request.json()
-        
-        # Create MCP transport instance
-        if server_name == "boutique":
-            from .mcp_servers.boutique_mcp_transport import BoutiqueMCPTransport
-            mcp_transport = BoutiqueMCPTransport()
-        elif server_name == "co2":
-            from .mcp_servers.co2_mcp_transport import CO2MCPTransport
-            mcp_transport = CO2MCPTransport()
-        else:
-            raise HTTPException(status_code=404, detail=f"MCP transport for '{server_name}' not implemented")
-        
+
         params = {
             "name": prompt_name,
             "arguments": body

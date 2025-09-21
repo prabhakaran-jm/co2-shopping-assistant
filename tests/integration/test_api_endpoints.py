@@ -4,6 +4,7 @@ Integration tests for API endpoints in CO2-Aware Shopping Assistant
 import pytest
 import asyncio
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 import sys
 import os
 
