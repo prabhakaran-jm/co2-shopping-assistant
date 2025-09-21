@@ -624,10 +624,10 @@ class CO2ShoppingAssistant {
             
             if (productCount && productCount > 1) {
                 content = `
-                    <div class="co2-widget">
-                        <div class="co2-icon">🌱</div>
-                        <div class="co2-content">
-                            <div class="co2-label">${label}</div>
+                <div class="co2-widget">
+                    <div class="co2-icon">🌱</div>
+                    <div class="co2-content">
+                        <div class="co2-label">${label}</div>
                             <div class="co2-value">${productCount} products found</div>
                             <div class="co2-breakdown">Total CO₂: ${this.totalCO2Impact.toFixed(1)}kg</div>
                             <div class="co2-breakdown">Average CO₂: ${averageCo2.toFixed(1)}kg</div>
@@ -703,7 +703,7 @@ class CO2ShoppingAssistant {
                 if (this.checkoutTotalLocked) {
                     // Keep the locked total from checkout response
                 } else {
-                    this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                this.totalCO2Impact = this.productCO2 + this.shippingCO2;
                 }
                 
                 // Calculate CO2 savings (vs worst alternatives)
@@ -1169,7 +1169,7 @@ class CO2ShoppingAssistant {
         if (isCheckoutResponse) {
             return;
         }
-
+        
         if (operation === 'add') {
             // Look for cart total or individual product CO2
             const cartTotalMatch = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);

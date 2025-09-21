@@ -8,7 +8,8 @@ a multi-agent system built with Google's Agent Development Kit (ADK).
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager, closing
+import re
+from contextlib import asynccontextmanager
 from typing import Dict, Any
 
 import uvicorn
@@ -18,7 +19,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 import structlog
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+)
+
+# Rate limiting imports
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    RATE_LIMITING_AVAILABLE = True
+except ImportError:
+    RATE_LIMITING_AVAILABLE = False
+    print("Warning: slowapi not available. Rate limiting disabled.")
 
 from .agents.host_agent import HostAgent
 from .agents.product_discovery_agent import ProductDiscoveryAgent
@@ -55,15 +68,114 @@ structlog.configure(
 
 logger = structlog.get_logger(__name__)
 
-REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
-REQUEST_DURATION = Histogram('http_request_duration_seconds', 'HTTP request duration', ['method', 'endpoint'])
+REQUEST_COUNT = Counter(
+    'http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status']
+)
+REQUEST_DURATION = Histogram(
+    'http_request_duration_seconds', 'HTTP request duration', ['method', 'endpoint']
+)
 ACTIVE_CONNECTIONS = Gauge('active_connections', 'Number of active connections')
-AGENT_REQUESTS = Counter('agent_requests_total', 'Total agent requests', ['agent_name', 'status'])
-AGENT_DURATION = Histogram('agent_request_duration_seconds', 'Agent request duration', ['agent_name'])
+AGENT_REQUESTS = Counter(
+    'agent_requests_total', 'Total agent requests', ['agent_name', 'status']
+)
+AGENT_DURATION = Histogram(
+    'agent_request_duration_seconds', 'Agent request duration', ['agent_name']
+)
+
+# Security metrics
+SECURITY_VIOLATIONS = Counter(
+    'security_violations_total', 'Security violations', ['violation_type']
+)
+RATE_LIMIT_HITS = Counter(
+    'rate_limit_hits_total', 'Rate limit violations', ['endpoint']
+)
+
+# Initialize rate limiter if available
+if RATE_LIMITING_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address)
+else:
+    limiter = None
 
 # Global agent instances
 agents: Dict[str, Any] = {}
 mcp_servers: Dict[str, Any] = {}
+
+
+def sanitize_input(text: str, max_length: int = 1000) -> str:
+    """
+    Sanitize user input to prevent injection attacks.
+    
+    Args:
+        text: Input text to sanitize
+        max_length: Maximum allowed length
+        
+    Returns:
+        Sanitized text
+    """
+    if not isinstance(text, str):
+        return ""
+    
+    # Remove potentially dangerous characters
+    sanitized = re.sub(r'[<>"\']', '', text)
+    
+    # Limit length
+    sanitized = sanitized[:max_length]
+    
+    # Remove excessive whitespace
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    
+    return sanitized
+
+
+def validate_request_size(request: Request) -> bool:
+    """
+    Validate request size to prevent large payload attacks.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        True if request size is acceptable
+    """
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            size = int(content_length)
+            if size > 1024 * 1024:  # 1MB limit
+                SECURITY_VIOLATIONS.labels(violation_type="large_request").inc()
+                logger.warning("Large request detected", size=size, client_ip=request.client.host)
+                return False
+        except ValueError:
+            pass
+    
+    return True
+
+
+def log_security_event(event_type: str, request: Request, details: Dict[str, Any] = None):
+    """
+    Log security events for monitoring.
+    
+    Args:
+        event_type: Type of security event
+        request: FastAPI request object
+        details: Additional details to log
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    
+    log_data = {
+        "event_type": event_type,
+        "client_ip": client_ip,
+        "user_agent": user_agent,
+        "path": request.url.path,
+        "method": request.method
+    }
+    
+    if details:
+        log_data.update(details)
+    
+    logger.warning("Security event detected", **log_data)
+    SECURITY_VIOLATIONS.labels(violation_type=event_type).inc()
 
 
 @asynccontextmanager
@@ -143,21 +255,70 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add rate limiting exception handler if available
+if RATE_LIMITING_AVAILABLE and limiter:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add CORS middleware with restricted origins
+allowed_origins = [
+    "https://assistant.cloudcarta.com",
+    "https://medium.com",
+    "https://www.medium.com"
+]
+
+# Add localhost for development
+if os.getenv("ENVIRONMENT", "production").lower() == "dev":
+    allowed_origins.extend([
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Ensure latest UI script is always fetched (avoid stale cached JS during demo)
+# Security middleware
 @app.middleware("http")
-async def no_cache_for_script_js(request: Request, call_next):
+async def security_middleware(request: Request, call_next):
+    """Security middleware for request validation and monitoring."""
+    # Validate request size
+    if not validate_request_size(request):
+        log_security_event("large_request", request)
+        return JSONResponse(
+            status_code=413,
+            content={"error": "Request too large"}
+        )
+    
+    # Check for suspicious patterns
+    user_agent = request.headers.get("user-agent", "").lower()
+    if any(pattern in user_agent for pattern in ["bot", "crawler", "scanner", "curl", "wget"]):
+        # Allow legitimate bots but log them
+        if not any(allowed in user_agent for allowed in ["googlebot", "bingbot", "slurp"]):
+            log_security_event("suspicious_user_agent", request, {"user_agent": user_agent})
+    
+    response = await call_next(request)
+    
+    # Add security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    return response
+
+# Ensure latest UI files are always fetched (avoid stale cached files during demo)
+@app.middleware("http")
+async def no_cache_for_static_files(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/") and "script.js" in path:
+    if path.startswith("/static/") and ("script.js" in path or "style.css" in path):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -227,24 +388,47 @@ async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+# Rate limiting decorator function
+def rate_limit_if_available(limit: str):
+    """Apply rate limiting if slowapi is available."""
+    def decorator(func):
+        if RATE_LIMITING_AVAILABLE and limiter:
+            return limiter.limit(limit)(func)
+        return func
+    return decorator
+
 @app.post("/api/chat")
+@rate_limit_if_available("10/minute")
 async def chat_endpoint(payload: Dict[str, Any], request: Request):
     """Main chat endpoint for user interactions."""
     try:
-        user_message = payload.get("message", "")
+        # Sanitize and validate input
+        user_message = sanitize_input(payload.get("message", ""))
+        
+        if not user_message:
+            log_security_event("empty_message", request)
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        # Validate message length
+        if len(user_message) < 2:
+            log_security_event("message_too_short", request, {"length": len(user_message)})
+            raise HTTPException(status_code=400, detail="Message too short")
+        
         # Derive a stable session id: prefer explicit payload, then cookie, else generate
+        import uuid
         session_id = payload.get("session_id")
         cookie_sid = request.cookies.get("assistant_sid")
         if not session_id or str(session_id).strip() == "":
             session_id = cookie_sid
         if not session_id or str(session_id).strip() == "":
-            import uuid
             session_id = f"sid_{uuid.uuid4().hex}"
         
-        if not user_message:
-            raise HTTPException(status_code=400, detail="Message is required")
+        # Validate session ID format
+        if not re.match(r'^sid_[a-f0-9]{32}$', session_id) and not re.match(r'^[a-f0-9\-]{36}$', session_id):
+            log_security_event("invalid_session_id", request, {"session_id": session_id})
+            session_id = f"sid_{uuid.uuid4().hex}"
         
-        logger.info("Processing user message", message=user_message, session_id=session_id)
+        logger.info("Processing user message", message=user_message[:100], session_id=session_id, client_ip=request.client.host)
         
         # Route to host agent for processing
         host_agent = agents["host"]
@@ -270,13 +454,15 @@ async def chat_endpoint(payload: Dict[str, Any], request: Request):
             )
         return json_resp
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Chat processing failed", error=str(e))
+        logger.error("Chat processing failed", error=str(e), client_ip=request.client.host)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/agents/{agent_name}/status")
-async def get_agent_status(agent_name: str):
+async def get_agent_status_endpoint(agent_name: str):
     """Get status of a specific agent."""
     if agent_name not in agents:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -291,6 +477,7 @@ async def get_agent_status(agent_name: str):
 
 
 @app.post("/api/adk-chat")
+@rate_limit_if_available("5/minute")
 async def adk_chat_endpoint(payload: Dict[str, Any], request: Request):
     """ADK-specific chat endpoint for testing ADK agent functionality."""
     try:
@@ -376,6 +563,7 @@ async def list_mcp_tools(server_name: str, mcp_transport = Depends(get_mcp_trans
 
 
 @app.post("/api/mcp/{server_name}/tools/{tool_name}")
+@rate_limit_if_available("20/minute")
 async def execute_mcp_tool(server_name: str, tool_name: str, request: Request, mcp_transport = Depends(get_mcp_transport)):
     """Execute a tool on an MCP server."""
     try:
