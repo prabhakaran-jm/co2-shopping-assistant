@@ -166,11 +166,19 @@ class BoutiqueMCPServer:
                         "categories": list(product_pb.categories),
                     })
 
-                # Client-side filtering
+                # Client-side filtering with improved search
                 query_lower = query.lower().strip()
                 show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products", ""]
+                
                 if query and query_lower not in show_all_commands:
-                    products = [p for p in products if query_lower in p['name'].lower() or query_lower in p['description'].lower()]
+                    # First try exact matches
+                    exact_matches = [p for p in products if query_lower in p['name'].lower() or query_lower in p['description'].lower()]
+                    
+                    if exact_matches:
+                        products = exact_matches
+                    else:
+                        # If no exact matches, try category-based and fuzzy matching
+                        products = self._intelligent_product_search(query_lower, products)
                 
                 if category:
                     products = [p for p in products if category in p['categories']]
@@ -189,6 +197,83 @@ class BoutiqueMCPServer:
             logger.error("Failed to search products via gRPC", error=str(e))
             logger.info("Falling back to cached/mock products")
             return await self._fallback_search_products(query, category, max_price, min_price, limit)
+    
+    def _intelligent_product_search(self, query: str, products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Intelligent product search with category mapping and fuzzy matching."""
+        
+        # Category mapping for common search terms
+        category_mappings = {
+            # Electronics
+            "laptop": ["electronics", "accessories"],
+            "computer": ["electronics", "accessories"], 
+            "phone": ["electronics", "accessories"],
+            "smartphone": ["electronics", "accessories"],
+            "tablet": ["electronics", "accessories"],
+            "camera": ["electronics", "accessories"],
+            "gaming": ["electronics", "accessories"],
+            "tech": ["electronics", "accessories"],
+            
+            # Clothing
+            "shirt": ["clothing", "tops"],
+            "t-shirt": ["clothing", "tops"],
+            "pants": ["clothing", "footwear"],
+            "jeans": ["clothing", "footwear"],
+            "dress": ["clothing", "tops"],
+            "jacket": ["clothing", "tops"],
+            "shoes": ["footwear"],
+            "boots": ["footwear"],
+            "sneakers": ["footwear"],
+            
+            # Home & Kitchen
+            "kitchen": ["kitchen"],
+            "cookware": ["kitchen"],
+            "appliance": ["kitchen", "hair", "beauty"],
+            "home": ["home", "decor"],
+            "decor": ["decor", "home"],
+            "furniture": ["home", "decor"],
+            
+            # Beauty & Personal Care
+            "beauty": ["beauty", "hair"],
+            "skincare": ["beauty", "hair"],
+            "makeup": ["beauty", "hair"],
+            "hair": ["hair", "beauty"],
+            "shampoo": ["hair", "beauty"],
+            "conditioner": ["hair", "beauty"],
+            
+            # Accessories
+            "accessory": ["accessories"],
+            "jewelry": ["accessories"],
+            "bag": ["accessories"],
+            "purse": ["accessories"],
+            "wallet": ["accessories"],
+            "belt": ["accessories"]
+        }
+        
+        # Find matching categories
+        matching_categories = set()
+        query_words = query.split()
+        
+        for word in query_words:
+            if word in category_mappings:
+                matching_categories.update(category_mappings[word])
+        
+        # If we found matching categories, return products from those categories
+        if matching_categories:
+            category_products = []
+            for product in products:
+                if any(cat in product.get('categories', []) for cat in matching_categories):
+                    category_products.append(product)
+            
+            if category_products:
+                # Add explanation to each product
+                for product in category_products:
+                    product['search_explanation'] = f"I couldn't find '{query}' exactly, but here are similar products from the {', '.join(matching_categories)} category:"
+                return category_products
+        
+        # If no category matches, return all products with explanation
+        for product in products:
+            product['search_explanation'] = f"I couldn't find '{query}' in our catalog, but here are all available products:"
+        return products
 
     async def _fallback_search_products(self, *args, **kwargs) -> List[Dict[str, Any]]:
         logger.warning("Using cached product data as fallback for search_products.")

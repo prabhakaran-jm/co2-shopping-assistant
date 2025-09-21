@@ -27,6 +27,7 @@ class CO2ShoppingAssistant {
         this.shippingCO2 = 0; // Track shipping CO2 separately
         this.selectedShippingOption = null; // Track selected shipping option name
         this.lastUserMessage = '';
+        this.isProcessingCheckoutCommand = false; // Flag to prevent double CO2 processing
         this.retry = { count: 0, max: 3, cooldownMs: 250, inFlight: false };
         
         // Sustainability tracking
@@ -291,7 +292,7 @@ class CO2ShoppingAssistant {
     }
 
     updateUIFromAssistant(text) {
-        const normalized = text.replace(/\*\*/g, '');
+        const normalized = text.replace(/\*\*/g, '').replace(/\\\$/g, '$');
         
         // This is the single source for CO2 extraction from any assistant response.
         this.extractAndUpdateCO2Savings(text);
@@ -314,10 +315,14 @@ class CO2ShoppingAssistant {
         
         // Handle checkout commands that change shipping method
         if (/checkout with|shipping.*ground|shipping.*eco|shipping.*express/i.test(this.lastUserMessage || '')) {
-            this.logAgent(`Detected shipping/checkout command: ${this.lastUserMessage}`);
-            const match = this.lastUserMessage.match(/with\s+(ground|eco|express)/i);
+            this.isProcessingCheckoutCommand = true; // Set flag to prevent double processing
+            const match = this.lastUserMessage.match(/with\s+(ground|eco|express|eco-friendly)/i);
             if (match && match[1]) {
-                const shippingMethod = match[1].toLowerCase();
+                let shippingMethod = match[1].toLowerCase();
+                // Map command terms to actual shipping method names
+                if (shippingMethod === 'eco') {
+                    shippingMethod = 'eco-friendly';
+                }
                 this.updateShippingSelectionFromCheckoutCommand(shippingMethod);
             } else {
                 this.logAgent(`Could not extract shipping method from command: ${this.lastUserMessage}`);
@@ -325,7 +330,8 @@ class CO2ShoppingAssistant {
         }
         
         // Handle product responses to render dynamic products
-        if (/show all products|find.*products|search.*products|list all|show me.*products|find watch|find sunglasses|find.*item/i.test(this.lastUserMessage || '')) {
+        // Check if response contains product information (📦 symbols) or if it's a product-related query
+        if (normalized.includes('📦') || /show all products|find.*products|search.*products|list all|show me.*products|find watch|find sunglasses|find.*item|find.*laptop|find.*hairdryer|find.*phone|find.*shoes|find.*shirt|eco.*friendly/i.test(this.lastUserMessage || '')) {
             this.renderProductsFromResponse(normalized);
         }
     }
@@ -437,6 +443,9 @@ class CO2ShoppingAssistant {
             this.co2Label = 'CO₂ Impact';
             this.updateCO2Display();
             this.resetSustainabilityMetrics();
+            
+            // Clear shipping selection visual state
+            this.clearShippingSelection();
             return;
         }
 
@@ -550,19 +559,31 @@ class CO2ShoppingAssistant {
 
         // 4. Handle a definitive "Total CO2" when not a cart operation (e.g., checkout)
         const totalCo2Match = text.match(/Total\s+CO[₂2]\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
-        if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
+        if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse && !this.isProcessingCheckoutCommand) {
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
-                // This is a definitive total from the backend (product + shipping)
-                // Don't add shipping again - this is the final total
-                this.totalCO2Impact = Math.max(0, co2Value);
-                this.productCO2 = co2Value - this.shippingCO2; // Extract product CO2
+                // Check if this is a checkout response with shipping already included
+                const isCheckoutResponse = /checkout|order.*summary|shipping.*method/i.test(text);
+                
+                if (isCheckoutResponse && this.shippingCO2 > 0) {
+                    // For checkout responses, the backend CO2 value is just the product CO2
+                    // We should use our own total calculation (product + shipping)
+                    this.productCO2 = Math.max(0, co2Value);
+                    this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                } else {
+                    // This is just product CO2, add shipping if selected
+                    this.productCO2 = Math.max(0, co2Value);
+                    this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+                }
                 this.calculateCO2Savings();
                 this.co2Label = 'Total CO₂ Impact';
                 this.updateCO2Display();
                 return;
             }
         }
+        
+        // Reset the checkout command flag after processing
+        this.isProcessingCheckoutCommand = false;
     }
     
     updateCO2Display(productCount = null, averageCo2 = null) {
@@ -665,11 +686,21 @@ class CO2ShoppingAssistant {
     }
     
   _updateShippingSelection(selectedOptionElement) {
-    if (!this.shippingOptionsEl) {
-      return;
-    }
+    // Handle both static shipping options and dynamic shipping-impact options
+    const staticOptions = document.querySelectorAll('.shipping-option');
+    const dynamicOptions = this.shippingOptionsEl ? this.shippingOptionsEl.children : [];
     
-    Array.from(this.shippingOptionsEl.children).forEach((option) => {
+    // Clear selection from static options
+    staticOptions.forEach((option) => {
+      if (option === selectedOptionElement) {
+        option.classList.add('selected');
+      } else {
+        option.classList.remove('selected');
+      }
+    });
+    
+    // Clear selection from dynamic options
+    Array.from(dynamicOptions).forEach((option) => {
       if (option === selectedOptionElement) {
         option.classList.add('shipping-impact__option--selected');
       } else {
@@ -678,25 +709,67 @@ class CO2ShoppingAssistant {
     });
   }
 
-  updateShippingSelectionFromCheckoutCommand(shippingMethod) {
+  clearShippingSelection() {
+    // Clear selection from all shipping options
+    const staticOptions = document.querySelectorAll('.shipping-option');
+    const dynamicOptions = this.shippingOptionsEl ? this.shippingOptionsEl.children : [];
+    
+    // Clear selection from static options
+    staticOptions.forEach((option) => {
+      option.classList.remove('selected');
+    });
+    
+    // Clear selection from dynamic options
+    Array.from(dynamicOptions).forEach((option) => {
+      option.classList.remove('shipping-impact__option--selected');
+    });
+  }
 
-    if (!this.shippingOptionsEl) {
-      return;
-    }
+  updateShippingSelectionFromCheckoutCommand(shippingMethod) {
 
     const normalizedShippingMethod = shippingMethod.toLowerCase();
     let selectedOptionElement = null;
 
-    Array.from(this.shippingOptionsEl.children).forEach((option) => {
+    // First check static shipping options
+    const staticOptions = document.querySelectorAll('.shipping-option');
+    staticOptions.forEach((option) => {
       const optionMethod = option.dataset.shippingMethod;
       if (optionMethod && optionMethod.toLowerCase() === normalizedShippingMethod) {
         selectedOptionElement = option;
       }
     });
 
+    // If not found in static options, check dynamic options
+    if (!selectedOptionElement && this.shippingOptionsEl) {
+      Array.from(this.shippingOptionsEl.children).forEach((option) => {
+        const optionMethod = option.dataset.shippingMethod;
+        if (optionMethod && optionMethod.toLowerCase() === normalizedShippingMethod) {
+          selectedOptionElement = option;
+        }
+      });
+    }
+
     if (selectedOptionElement) {
       this._updateShippingSelection(selectedOptionElement);
+      
+      // Also update CO2 values to prevent double-counting
+      const co2 = parseFloat(selectedOptionElement.dataset.co2 || 0);
+      const price = parseFloat(selectedOptionElement.dataset.price || 0);
+      const days = selectedOptionElement.dataset.days || '';
+      
+      // Update shipping CO2 (replace, don't add)
+      this.shippingCO2 = co2;
+      this.selectedShippingOption = shippingMethod;
+      this.totalCO2Impact = this.productCO2 + this.shippingCO2;
+      
+      // Calculate CO2 savings
+      this.calculateCO2Savings();
+      
+      this.co2Label = 'Total CO₂ Impact';
+      this.updateCO2Display();
+      
     } else {
+      this.logAgent(`Could not find shipping option: ${shippingMethod}`);
     }
   }
     
@@ -735,9 +808,9 @@ class CO2ShoppingAssistant {
         // Split text by product sections (📦 symbols)
         const productSections = text.split(/📦/).slice(1); // Remove first empty section
         
-        productSections.forEach(section => {
-            // Extract product name (remove markdown formatting)
-            const nameMatch = section.match(/^\s*\*?\*?([^*\n]+?)\*?\*?\s*\n/);
+        productSections.forEach((section, index) => {
+            // Extract product name (remove markdown formatting and number prefix)
+            const nameMatch = section.match(/^\s*\*?\*?(?:\d+\.\s*)?([^*\n]+?)\*?\*?\s*\n/);
             if (!nameMatch) return;
             
             const name = nameMatch[1].trim();
@@ -782,7 +855,8 @@ class CO2ShoppingAssistant {
         } else if (name.includes('shirt') || name.includes('t-shirt') || name.includes('tank top')) {
             return '/ob-images/static/img/products/tank-top.jpg';
         } else if (name.includes('laptop')) {
-            return '/ob-images/static/img/products/laptop.jpg';
+            // Laptop not in catalog, suggest tech accessories instead
+            return '/ob-images/static/img/products/watch.jpg';
         } else if (name.includes('hairdryer') || name.includes('hair dryer')) {
             return '/ob-images/static/img/products/hairdryer.jpg';
         } else if (name.includes('candle') || name.includes('holder')) {

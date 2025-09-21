@@ -1038,7 +1038,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
             return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
         # Check if this is an intelligent fallback with AI explanations
-        has_ai_explanations = any(product.get('ai_explanation') for product in products)
+        has_ai_explanations = any(product.get('ai_explanation') or product.get('search_explanation') for product in products)
         
         # Calculate total and average CO2 for multiple products
         total_co2 = sum(p.get('co2_emissions', 0.0) for p in products)
@@ -1054,11 +1054,12 @@ What would you like to explore? I'll make sure to highlight the environmental be
 
         Generate a personalized, engaging product search response that:
         1. Creates an enthusiastic opening that acknowledges their search
-        2. Presents the products in a catalog-style format with clear product cards
-        3. Highlights the environmental benefits and CO2 impact of each product
-        4. Provides personalized recommendations based on the search criteria
-        5. Includes sustainability tips and eco-friendly shopping advice
-        6. Encourages further interaction (asking questions, adding to cart, etc.)
+        2. If products have 'search_explanation', include that explanation naturally in the response
+        3. Presents the products in a catalog-style format with clear product cards
+        4. Highlights the environmental benefits and CO2 impact of each product
+        5. Provides personalized recommendations based on the search criteria
+        6. Includes sustainability tips and eco-friendly shopping advice
+        7. Encourages further interaction (asking questions, adding to cart, etc.)
         
         Format each product as:
         📦 **[Product Name]**
@@ -1079,7 +1080,7 @@ What would you like to explore? I'll make sure to highlight the environmental be
             return "I couldn't find any products matching your criteria. Try adjusting your search terms."
 
         # Check if this is an intelligent fallback with AI explanations
-        has_ai_explanations = any(product.get('ai_explanation') for product in products)
+        has_ai_explanations = any(product.get('ai_explanation') or product.get('search_explanation') for product in products)
         
         if has_ai_explanations:
             response = f"🤖 **AI-Powered Product Suggestions** ({len(products)} recommendations)\n\n"
