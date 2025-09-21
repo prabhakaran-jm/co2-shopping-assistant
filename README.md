@@ -1,4 +1,4 @@
-# 🌱 CO2-Aware Shopping Assistant
+# 🌱 CO2-Aware Shopping Assistant 
 
 A revolutionary AI-powered shopping assistant that helps users make environmentally conscious purchasing decisions by providing real-time CO2 emission calculations and eco-friendly recommendations.
 
