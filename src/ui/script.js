@@ -432,13 +432,6 @@ class CO2ShoppingAssistant {
     
     // **FIXED**: This is the single, corrected version of the function.
     extractAndUpdateCO2Savings(response) {
-        console.log('🔍 DEBUG: extractAndUpdateCO2Savings called with response:', response);
-        console.log('🔍 DEBUG: Current values before processing:');
-        console.log('  - productCO2:', this.productCO2);
-        console.log('  - shippingCO2:', this.shippingCO2);
-        console.log('  - totalCO2Impact:', this.totalCO2Impact);
-        console.log('  - isProcessingCheckoutCommand:', this.isProcessingCheckoutCommand);
-        
         // Normalize: remove markdown bold so regex matches labels like **Total CO2**
         const text = response.replace(/\*\*/g, '');
 
@@ -556,44 +549,31 @@ class CO2ShoppingAssistant {
         // 4b. Handle cart CO2 from cart summary responses
         const cartSummaryMatch = text.match(/Total\s+CO[₂2]\s*impact.*?(\d+(?:\.\d+)?)\s*kg/i);
         if (cartSummaryMatch && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
-            console.log('🎯 DEBUG: cartSummaryMatch found! Pattern: /Total\\s+CO[₂2]\\s*impact.*?(\\d+(?:\\.\\d+)?)\\s*kg/i');
-            console.log('🎯 DEBUG: Matched value:', cartSummaryMatch[1]);
             const co2Value = parseFloat(cartSummaryMatch[1]);
             if (!Number.isNaN(co2Value)) {
                 // Check if this is a checkout response (which includes shipping)
                 const isCheckoutResponse = /checkout|order.*summary|shipping.*method/i.test(text);
-                console.log('🎯 DEBUG: isCheckoutResponse:', isCheckoutResponse);
-                console.log('🎯 DEBUG: this.shippingCO2:', this.shippingCO2);
                 
                 if (isCheckoutResponse) {
-                    console.log('🎯 DEBUG: Processing checkout response');
                     // Backend always sends the FINAL total CO2 impact in checkout responses
                     this.totalCO2Impact = co2Value; // 194.5kg (final total)
                     
                     // If shipping is already set, calculate products by subtraction
                     if (this.shippingCO2 > 0) {
                         this.productCO2 = Math.max(0, co2Value - this.shippingCO2);
-                        console.log('🎯 DEBUG: Checkout with shipping - calculated productCO2:', this.productCO2);
                     } else {
                         // Shipping will be set later - assume eco-friendly shipping 150kg
                         this.productCO2 = Math.max(0, co2Value - 150.0); // 194.5 - 150 = 44.5kg
                         this.checkoutTotalLocked = true; // Prevent recalculation when shipping is added
-                        console.log('🎯 DEBUG: Checkout without shipping - assumed eco-friendly shipping, calculated productCO2:', this.productCO2);
                     }
-                    console.log('🎯 DEBUG: Set totalCO2Impact to:', this.totalCO2Impact);
-                    console.log('🎯 DEBUG: Set productCO2 to:', this.productCO2);
                 } else {
-                    console.log('🎯 DEBUG: Processing regular cart response');
                     // This is a regular cart response (products only)
                     this.productCO2 = Math.max(0, co2Value);
                     this.totalCO2Impact = this.productCO2 + this.shippingCO2;
-                    console.log('🎯 DEBUG: Set productCO2 to:', this.productCO2);
-                    console.log('🎯 DEBUG: Set totalCO2Impact to:', this.totalCO2Impact);
                 }
                 this.calculateCO2Savings();
                 this.co2Label = this.shippingCO2 > 0 ? 'Total CO₂ Impact' : 'Cart CO₂ Impact';
                 this.updateCO2Display();
-                console.log('🎯 DEBUG: Returning after cartSummaryMatch processing');
                 return;
             }
         }
@@ -601,39 +581,27 @@ class CO2ShoppingAssistant {
         // 4. Handle a definitive "Total CO2" when not a cart operation (e.g., checkout)
         const totalCo2Match = text.match(/Total\s+CO[₂2]\s*Impact\s*:\s*(\d+(?:\.\d+)?)\s*kg/i);
         if (totalCo2Match && !isCartAddOperation && !isCartRemoveOperation && !isCartClearOperation && !isCartEmptyResponse) {
-            console.log('🎯 DEBUG: totalCo2Match found! Pattern: /Total\\s+CO[₂2]\\s*Impact\\s*:\\s*(\\d+(?:\\.\\d+)?)\\s*kg/i');
-            console.log('🎯 DEBUG: Matched value:', totalCo2Match[1]);
             const co2Value = parseFloat(totalCo2Match[1]);
             if (!Number.isNaN(co2Value)) {
                 // Check if this is a checkout response with shipping already included
                 const isCheckoutResponse = /checkout|order.*summary|shipping.*method/i.test(text);
-                console.log('🎯 DEBUG: isCheckoutResponse:', isCheckoutResponse);
-                console.log('🎯 DEBUG: this.shippingCO2:', this.shippingCO2);
                 
                 if (isCheckoutResponse) {
-                    console.log('🎯 DEBUG: Processing checkout response (pattern 2)');
                     // Backend always sends the FINAL total CO2 impact in checkout responses
                     this.totalCO2Impact = co2Value; // 194.5kg (final total)
                     
                     // If shipping is already set, calculate products by subtraction
                     if (this.shippingCO2 > 0) {
                         this.productCO2 = Math.max(0, co2Value - this.shippingCO2);
-                        console.log('🎯 DEBUG: Checkout with shipping - calculated productCO2 (pattern 2):', this.productCO2);
                     } else {
                         // Shipping will be set later - assume eco-friendly shipping 150kg
                         this.productCO2 = Math.max(0, co2Value - 150.0); // 194.5 - 150 = 44.5kg
                         this.checkoutTotalLocked = true; // Prevent recalculation when shipping is added
-                        console.log('🎯 DEBUG: Checkout without shipping - assumed eco-friendly shipping, calculated productCO2 (pattern 2):', this.productCO2);
                     }
-                    console.log('🎯 DEBUG: Set totalCO2Impact to:', this.totalCO2Impact);
-                    console.log('🎯 DEBUG: Set productCO2 to:', this.productCO2);
                 } else {
-                    console.log('🎯 DEBUG: Processing regular response (pattern 2)');
                     // This is just product CO2, add shipping if selected
                     this.productCO2 = Math.max(0, co2Value);
                     this.totalCO2Impact = this.productCO2 + this.shippingCO2;
-                    console.log('🎯 DEBUG: Set productCO2 to:', this.productCO2);
-                    console.log('🎯 DEBUG: Set totalCO2Impact to:', this.totalCO2Impact);
                 }
                 this.calculateCO2Savings();
                 this.co2Label = 'Total CO₂ Impact';
@@ -641,7 +609,6 @@ class CO2ShoppingAssistant {
                 
                 // Reset the checkout command flag after processing
                 this.isProcessingCheckoutCommand = false;
-                console.log('🎯 DEBUG: Returning after totalCo2Match processing');
                 return;
             }
         }
@@ -651,14 +618,6 @@ class CO2ShoppingAssistant {
     }
     
     updateCO2Display(productCount = null, averageCo2 = null) {
-        console.log('🎨 DEBUG: updateCO2Display called with:');
-        console.log('  - productCount:', productCount);
-        console.log('  - averageCo2:', averageCo2);
-        console.log('  - this.productCO2:', this.productCO2);
-        console.log('  - this.shippingCO2:', this.shippingCO2);
-        console.log('  - this.totalCO2Impact:', this.totalCO2Impact);
-        console.log('  - this.displayProductCO2:', this.displayProductCO2);
-        
         if (this.co2SavingsElement) {
             const label = this.co2Label || 'CO₂ Impact';
             let content;
@@ -742,7 +701,6 @@ class CO2ShoppingAssistant {
                 
                 // If checkout total is locked, don't recalculate - just update shipping
                 if (this.checkoutTotalLocked) {
-                    console.log('🔒 DEBUG: Checkout total locked - not recalculating totalCO2Impact');
                     // Keep the locked total from checkout response
                 } else {
                     this.totalCO2Impact = this.productCO2 + this.shippingCO2;
@@ -761,21 +719,12 @@ class CO2ShoppingAssistant {
     }
     
     async sendShippingSelectionToBackend(shippingOption) {
-        console.log('🚢 DEBUG: sendShippingSelectionToBackend called with:', shippingOption);
-        console.log('🚢 DEBUG: Current values before shipping call:');
-        console.log('  - productCO2:', this.productCO2);
-        console.log('  - shippingCO2:', this.shippingCO2);
-        console.log('  - totalCO2Impact:', this.totalCO2Impact);
-        
         try {
             const response = await this.callAPI(`set shipping to ${shippingOption}`);
             // Extract the text response from the API response object
             const messageText = response.response?.response || response.response || response;
-            console.log('🚢 DEBUG: Backend response:', messageText);
-            console.log('🚢 DEBUG: NOT calling extractAndUpdateCO2Savings - values should remain unchanged');
             // CO2 values are already set by updateUIFromAssistant - no need to recalculate
         } catch (error) {
-            console.log('🚢 DEBUG: Error in sendShippingSelectionToBackend:', error);
         }
     }
     
