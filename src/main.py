@@ -80,6 +80,10 @@ async def lifespan(app: FastAPI):
         await mcp_servers["boutique"].start()
         await mcp_servers["co2"].start()
         
+        # Initialize product cache for better performance
+        logger.info("Initializing product cache...")
+        await mcp_servers["boutique"].initialize_cache()
+        
         # Initialize A2A Protocol first
         logger.info("Initializing A2A protocol...")
         a2a_protocol = A2AProtocol()

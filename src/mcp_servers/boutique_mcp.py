@@ -6,9 +6,8 @@ for product catalog, cart operations, and order management.
 """
 
 import asyncio
-import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import structlog
 import httpx
 from grpc import aio
@@ -40,7 +39,7 @@ class CircuitBreaker:
         self.last_failure_time = time.time()
         if self.fail_count >= self.fail_max:
             self.state = "open"
-            logger.warning(f"Circuit breaker for service has been opened.")
+            logger.warning("Circuit breaker for service has been opened.")
 
     def record_success(self):
         self.fail_count = 0
@@ -64,11 +63,26 @@ class BoutiqueMCPServer:
         self.boutique_base_url = boutique_base_url
         self.running = False
 
-        product_catalog_addr = os.getenv("PRODUCT_CATALOG_ADDR", "productcatalogservice.online-boutique.svc.cluster.local:3550")
-        cartservice_addr = os.getenv("CARTSERVICE_ADDR", "http://cartservice.online-boutique.svc.cluster.local:7070")
-        checkoutservice_addr = os.getenv("CHECKOUTSERVICE_ADDR", "http://checkoutservice.online-boutique.svc.cluster.local:5050")
-        recommendation_addr = os.getenv("RECOMMENDATION_SERVICE_ADDR", "http://recommendationservice.online-boutique.svc.cluster.local:8080")
-        currency_addr = os.getenv("CURRENCYSERVICE_ADDR", "http://currencyservice.online-boutique.svc.cluster.local:7000")
+        product_catalog_addr = os.getenv(
+            "PRODUCT_CATALOG_ADDR", 
+            "productcatalogservice.online-boutique.svc.cluster.local:3550"
+        )
+        cartservice_addr = os.getenv(
+            "CARTSERVICE_ADDR", 
+            "http://cartservice.online-boutique.svc.cluster.local:7070"
+        )
+        checkoutservice_addr = os.getenv(
+            "CHECKOUTSERVICE_ADDR", 
+            "http://checkoutservice.online-boutique.svc.cluster.local:5050"
+        )
+        recommendation_addr = os.getenv(
+            "RECOMMENDATION_SERVICE_ADDR", 
+            "http://recommendationservice.online-boutique.svc.cluster.local:8080"
+        )
+        currency_addr = os.getenv(
+            "CURRENCYSERVICE_ADDR", 
+            "http://currencyservice.online-boutique.svc.cluster.local:7000"
+        )
 
         proxy_base = os.getenv("OB_PROXY_BASE_URL") or os.getenv("BOUTIQUE_BASE_URL")
         if proxy_base:
@@ -89,8 +103,57 @@ class BoutiqueMCPServer:
         self.circuit_breakers = {name: CircuitBreaker(fail_max=3, reset_timeout=60) for name in self.endpoints}
         self._product_cache = []
         self._cache_last_updated = None
+        self._cache_ttl = 300  # 5 minutes cache TTL
 
         logger.info("Boutique MCP Server initialized", base_url=boutique_base_url)
+
+    async def initialize_cache(self):
+        """Preload products cache on startup for better performance"""
+        try:
+            logger.info("Preloading product cache...")
+            # Trigger a "show all" query to populate cache
+            await self.search_products("show all products")
+            logger.info("Product cache preloaded successfully", cache_size=len(self._product_cache))
+        except Exception as e:
+            logger.warning("Failed to preload product cache", error=str(e))
+
+    def _is_show_all_query(self, query: str) -> bool:
+        """Check if query is a 'show all' type request"""
+        if not query:
+            return True
+        query_lower = query.lower().strip()
+        show_all_commands = [
+            "show all", "all products", "show me all", "list all", 
+            "show products", "products", "show all products", ""
+        ]
+        return query_lower in show_all_commands
+
+    def _is_cache_valid(self) -> bool:
+        """Check if cache is still valid"""
+        if not self._cache_last_updated or not self._product_cache:
+            return False
+        cache_age = (datetime.now() - self._cache_last_updated).total_seconds()
+        return cache_age < self._cache_ttl
+
+    def _get_cached_products(self) -> List[Dict[str, Any]]:
+        """Get products from cache"""
+        logger.info("Using cached products for show all query", cache_size=len(self._product_cache))
+        return self._product_cache.copy()
+
+    def _apply_filters(self, products: List[Dict[str, Any]], category: Optional[str] = None, max_price: Optional[float] = None, min_price: Optional[float] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """Apply filters to products"""
+        filtered_products = products.copy()
+        
+        if category:
+            filtered_products = [p for p in filtered_products if category in p['categories']]
+
+        if min_price is not None:
+            filtered_products = [p for p in filtered_products if p['price'] >= min_price]
+
+        if max_price is not None:
+            filtered_products = [p for p in filtered_products if p['price'] <= max_price]
+
+        return filtered_products[:limit]
 
     @staticmethod
     def retry_with_breaker(service_name: str, fallback_method: str):
@@ -149,6 +212,16 @@ class BoutiqueMCPServer:
     @retry_with_breaker("product_catalog", "_fallback_search_products")
     async def search_products(self, query: str, category: Optional[str] = None, max_price: Optional[float] = None, min_price: Optional[float] = None, limit: int = 20) -> List[Dict[str, Any]]:
         logger.info("Searching for products", query=query, category=category, max_price=max_price, min_price=min_price)
+        
+        # Check cache first for "show all" queries
+        if self._is_show_all_query(query) and self._is_cache_valid():
+            logger.info("Using cached products for show all query", cache_size=len(self._product_cache))
+            cached_products = self._get_cached_products()
+            
+            # Apply filters to cached products
+            filtered_products = self._apply_filters(cached_products, category, max_price, min_price, limit)
+            return filtered_products
+        
         try:
             async with aio.insecure_channel(self.endpoints["product_catalog"]) as channel:
                 stub = pb2_grpc.ProductCatalogServiceStub(channel)
@@ -166,6 +239,11 @@ class BoutiqueMCPServer:
                         "categories": list(product_pb.categories),
                     })
 
+                # Always cache the full product list on a successful fetch
+                self._product_cache = products.copy()
+                self._cache_last_updated = datetime.now()
+                logger.info("Updated product cache with fresh data", cache_size=len(self._product_cache))
+
                 # Client-side filtering with improved search
                 query_lower = query.lower().strip()
                 show_all_commands = ["show all", "all products", "show me all", "list all", "show products", "products", "show all products", ""]
@@ -180,19 +258,10 @@ class BoutiqueMCPServer:
                         # If no exact matches, try category-based and fuzzy matching
                         products = self._intelligent_product_search(query_lower, products)
                 
-                if category:
-                    products = [p for p in products if category in p['categories']]
-
-                if min_price is not None:
-                    products = [p for p in products if p['price'] >= min_price]
-
-                if max_price is not None:
-                    products = [p for p in products if p['price'] <= max_price]
-
-                self._product_cache = products[:limit]
-                self._cache_last_updated = datetime.now()
+                # Apply filters
+                filtered_products = self._apply_filters(products, category, max_price, min_price, limit)
                 
-                return self._product_cache
+                return filtered_products
         except Exception as e:
             logger.error("Failed to search products via gRPC", error=str(e))
             logger.info("Falling back to cached/mock products")
